@@ -151,22 +151,61 @@ var (
 	patTokenType = uint16(0x0003)
 )
 
+type TokenRequest interface {
+	marshal() []byte
+	unmarshal(data []byte) bool
+}
+
+type BasicTokenRequest struct {
+	raw        []byte
+	tokenType  uint16
+	tokenKeyID uint8
+	blindedReq []byte // 512 bytes
+}
+
+func (r *BasicTokenRequest) marshal() []byte {
+	if r.raw != nil {
+		return r.raw
+	}
+
+	b := cryptobyte.NewBuilder(nil)
+	b.AddUint16(r.tokenType)
+	b.AddUint8(r.tokenKeyID)
+	b.AddBytes(r.blindedReq)
+
+	r.raw = b.BytesOrPanic()
+	return r.raw
+}
+
+func (r *BasicTokenRequest) unmarshal(data []byte) bool {
+	s := cryptobyte.String(data)
+
+	if !s.ReadUint16(&r.tokenType) ||
+		!s.ReadUint8(&r.tokenKeyID) ||
+		!s.ReadBytes(&r.blindedReq, 512) {
+		return false
+	}
+
+	return true
+}
+
 // https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#section-5.3
-type TokenRequest struct {
+type RateLimitedTokenRequest struct {
+	raw                 []byte
 	tokenType           uint16
 	tokenKeyID          uint8
 	blindedReq          []byte // 512 bytes
 	requestKey          []byte // 32 bytes
 	nameKeyID           []byte // 32 bytes
 	encryptedOriginName []byte // 16-bit length prefixed slice
-	signature           []byte // 64 byets
+	signature           []byte // 64 bytes
 }
 
-func (r TokenRequest) Type() uint16 {
+func (r RateLimitedTokenRequest) Type() uint16 {
 	return r.tokenType
 }
 
-func (r TokenRequest) Equal(r2 TokenRequest) bool {
+func (r RateLimitedTokenRequest) Equal(r2 RateLimitedTokenRequest) bool {
 	if r.tokenType == r2.tokenType &&
 		r.tokenKeyID == r2.tokenKeyID &&
 		bytes.Equal(r.blindedReq, r2.blindedReq) &&
@@ -179,7 +218,7 @@ func (r TokenRequest) Equal(r2 TokenRequest) bool {
 	return false
 }
 
-func (r TokenRequest) Marshal() []byte {
+func (r RateLimitedTokenRequest) Marshal() []byte {
 	b := cryptobyte.NewBuilder(nil)
 	b.AddUint16(r.tokenType)
 	b.AddUint8(r.tokenKeyID)
@@ -193,28 +232,28 @@ func (r TokenRequest) Marshal() []byte {
 	return b.BytesOrPanic()
 }
 
-func UnmarshalTokenRequest(data []byte) (TokenRequest, error) {
+func UnmarshalTokenRequest(data []byte) (RateLimitedTokenRequest, error) {
 	s := cryptobyte.String(data)
 
-	request := TokenRequest{}
+	request := RateLimitedTokenRequest{}
 	if !s.ReadUint16(&request.tokenType) ||
 		!s.ReadUint8(&request.tokenKeyID) ||
 		!s.ReadBytes(&request.blindedReq, 512) ||
 		!s.ReadBytes(&request.requestKey, 32) ||
 		!s.ReadBytes(&request.nameKeyID, 32) {
-		return TokenRequest{}, fmt.Errorf("Invalid TokenRequest encoding")
+		return RateLimitedTokenRequest{}, fmt.Errorf("Invalid TokenRequest encoding")
 	}
 
 	var encryptedOriginName cryptobyte.String
 	if !s.ReadUint16LengthPrefixed(&encryptedOriginName) || encryptedOriginName.Empty() {
-		return TokenRequest{}, fmt.Errorf("Invalid TokenRequest encoding")
+		return RateLimitedTokenRequest{}, fmt.Errorf("Invalid TokenRequest encoding")
 	}
 	request.encryptedOriginName = make([]byte, len(encryptedOriginName))
 	copy(request.encryptedOriginName, encryptedOriginName)
 
 	s.ReadBytes(&request.signature, 64)
 	if !s.Empty() {
-		return TokenRequest{}, fmt.Errorf("Invalid remaining length")
+		return RateLimitedTokenRequest{}, fmt.Errorf("Invalid remaining length")
 	}
 
 	return request, nil
@@ -338,12 +377,12 @@ func UnmarshalToken(data []byte) (Token, error) {
 type TokenRequestState struct {
 	tokenInput        []byte
 	blindedRequestKey []byte
-	request           TokenRequest
+	request           RateLimitedTokenRequest
 	verificationKey   *rsa.PublicKey
 	verifier          blindsign.VerifierState
 }
 
-func (s TokenRequestState) Request() TokenRequest {
+func (s TokenRequestState) Request() RateLimitedTokenRequest {
 	return s.request
 }
 
@@ -422,7 +461,7 @@ func (c Client) CreateTokenRequest(challenge, nonce, blind []byte, tokenKeyID []
 
 	signature := ed25519.MaskSign(c.secretKey, message, blind)
 
-	request := TokenRequest{
+	request := RateLimitedTokenRequest{
 		tokenType:           patTokenType,
 		tokenKeyID:          tokenKeyID[0],
 		blindedReq:          blindedMessage,
@@ -557,7 +596,7 @@ func decryptOriginName(nameKey PrivateNameKey, tokenKeyID uint8, blindedMessage 
 	return string(originName), err
 }
 
-func (i Issuer) Evaluate(req TokenRequest) ([]byte, []byte, error) {
+func (i Issuer) Evaluate(req RateLimitedTokenRequest) ([]byte, []byte, error) {
 	// Recover and validate the origin name
 	originName, err := decryptOriginName(i.nameKey, req.tokenKeyID, req.blindedReq, req.requestKey, req.encryptedOriginName)
 	if err != nil {
@@ -585,6 +624,38 @@ func (i Issuer) Evaluate(req TokenRequest) ([]byte, []byte, error) {
 	valid := ed25519.Verify(req.requestKey, message, req.signature)
 	if !valid {
 		return nil, nil, fmt.Errorf("Invalid request signature")
+	}
+
+	// Blinded key
+	blindedRequestKey, err := ed25519.BlindKey(req.requestKey, originIndexKey.Seed())
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Blinded signature
+	signer := blindrsa.NewRSASigner(originTokenKey)
+	blindSignature, err := signer.BlindSign(req.blindedReq)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return blindSignature, blindedRequestKey, nil
+}
+
+func (i Issuer) EvaluateWithoutCheck(req RateLimitedTokenRequest) ([]byte, []byte, error) {
+	// Recover and validate the origin name
+	originName, err := decryptOriginName(i.nameKey, req.tokenKeyID, req.blindedReq, req.requestKey, req.encryptedOriginName)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	originIndexKey, ok := i.originIndexKeys[string(originName)]
+	if !ok {
+		return nil, nil, fmt.Errorf("Unknown origin: %s", string(originName))
+	}
+	originTokenKey, ok := i.originTokenKeys[string(originName)]
+	if !ok {
+		return nil, nil, fmt.Errorf("Unknown origin: %s", string(originName))
 	}
 
 	// Blinded key
