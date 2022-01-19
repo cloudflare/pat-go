@@ -70,7 +70,7 @@ func encryptOriginName(nameKey PublicNameKey, tokenKeyID uint8, blindedMessage [
 	b.AddUint16(uint16(nameKey.suite.KEM.ID()))
 	b.AddUint16(uint16(nameKey.suite.KDF.ID()))
 	b.AddUint16(uint16(nameKey.suite.AEAD.ID()))
-	b.AddUint16(rateLimitedTokenType)
+	b.AddUint16(RateLimitedTokenType)
 	b.AddUint8(tokenKeyID)
 	b.AddBytes(blindedMessage)
 	b.AddBytes(requestKey)
@@ -142,7 +142,7 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blind []byte, to
 
 	context := sha256.Sum256(challenge)
 	token := Token{
-		TokenType:     rateLimitedTokenType,
+		TokenType:     RateLimitedTokenType,
 		Nonce:         nonce,
 		Context:       context[:],
 		KeyID:         tokenKeyID,
@@ -160,7 +160,7 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blind []byte, to
 	}
 
 	b := cryptobyte.NewBuilder(nil)
-	b.AddUint16(rateLimitedTokenType)
+	b.AddUint16(RateLimitedTokenType)
 	b.AddUint8(tokenKeyID[0])
 	b.AddBytes(blindedMessage)
 	b.AddBytes(blindedPublicKey)
@@ -281,7 +281,7 @@ func decryptOriginName(nameKey PrivateNameKey, tokenKeyID uint8, blindedMessage 
 	b.AddUint16(uint16(nameKey.suite.KEM.ID()))
 	b.AddUint16(uint16(nameKey.suite.KDF.ID()))
 	b.AddUint16(uint16(nameKey.suite.AEAD.ID()))
-	b.AddUint16(rateLimitedTokenType)
+	b.AddUint16(RateLimitedTokenType)
 	b.AddUint8(tokenKeyID)
 	b.AddBytes(blindedMessage)
 	b.AddBytes(requestKey)
@@ -322,7 +322,7 @@ func (i RateLimitedIssuer) Evaluate(req RateLimitedTokenRequest) ([]byte, []byte
 
 	// Verify the request signature
 	b := cryptobyte.NewBuilder(nil)
-	b.AddUint16(rateLimitedTokenType)
+	b.AddUint16(RateLimitedTokenType)
 	b.AddUint8(req.tokenKeyID)
 	b.AddBytes(req.blindedReq)
 	b.AddBytes(req.requestKey)

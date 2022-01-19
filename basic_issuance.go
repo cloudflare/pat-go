@@ -67,7 +67,7 @@ func (c BasicPublicClient) CreateTokenRequest(challenge, nonce []byte, tokenKeyI
 
 	context := sha256.Sum256(challenge)
 	token := Token{
-		TokenType:     basicPublicTokenType,
+		TokenType:     BasicPublicTokenType,
 		Nonce:         nonce,
 		Context:       context[:],
 		KeyID:         tokenKeyID,

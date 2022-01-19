@@ -7,8 +7,8 @@ import (
 )
 
 var (
-	basicPublicTokenType = uint16(0x0002)
-	rateLimitedTokenType = uint16(0x0003)
+	BasicPublicTokenType = uint16(0x0002)
+	RateLimitedTokenType = uint16(0x0003)
 )
 
 type TokenRequest interface {
@@ -23,7 +23,7 @@ type BasicPublicTokenRequest struct {
 }
 
 func (r BasicPublicTokenRequest) Type() uint16 {
-	return basicPublicTokenType
+	return BasicPublicTokenType
 }
 
 func (r BasicPublicTokenRequest) Equal(r2 BasicPublicTokenRequest) bool {
@@ -34,13 +34,13 @@ func (r BasicPublicTokenRequest) Equal(r2 BasicPublicTokenRequest) bool {
 	return false
 }
 
-func (r BasicPublicTokenRequest) Marshal() []byte {
+func (r *BasicPublicTokenRequest) Marshal() []byte {
 	if r.raw != nil {
 		return r.raw
 	}
 
 	b := cryptobyte.NewBuilder(nil)
-	b.AddUint16(basicPublicTokenType)
+	b.AddUint16(BasicPublicTokenType)
 	b.AddUint8(r.tokenKeyID)
 	b.AddBytes(r.blindedReq)
 
@@ -53,7 +53,7 @@ func (r *BasicPublicTokenRequest) Unmarshal(data []byte) bool {
 
 	var tokenType uint16
 	if !s.ReadUint16(&tokenType) ||
-		tokenType != basicPublicTokenType ||
+		tokenType != BasicPublicTokenType ||
 		!s.ReadUint8(&r.tokenKeyID) ||
 		!s.ReadBytes(&r.blindedReq, 512) {
 		return false
@@ -74,7 +74,7 @@ type RateLimitedTokenRequest struct {
 }
 
 func (r RateLimitedTokenRequest) Type() uint16 {
-	return rateLimitedTokenType
+	return RateLimitedTokenType
 }
 
 func (r RateLimitedTokenRequest) Equal(r2 RateLimitedTokenRequest) bool {
@@ -89,9 +89,13 @@ func (r RateLimitedTokenRequest) Equal(r2 RateLimitedTokenRequest) bool {
 	return false
 }
 
-func (r RateLimitedTokenRequest) Marshal() []byte {
+func (r *RateLimitedTokenRequest) Marshal() []byte {
+	if r.raw != nil {
+		return r.raw
+	}
+
 	b := cryptobyte.NewBuilder(nil)
-	b.AddUint16(rateLimitedTokenType)
+	b.AddUint16(RateLimitedTokenType)
 	b.AddUint8(r.tokenKeyID)
 	b.AddBytes(r.blindedReq)
 	b.AddBytes(r.requestKey)
@@ -100,7 +104,9 @@ func (r RateLimitedTokenRequest) Marshal() []byte {
 		b.AddBytes(r.encryptedOriginName)
 	})
 	b.AddBytes(r.signature)
-	return b.BytesOrPanic()
+
+	r.raw = b.BytesOrPanic()
+	return r.raw
 }
 
 func (r *RateLimitedTokenRequest) Unmarshal(data []byte) bool {
@@ -108,7 +114,7 @@ func (r *RateLimitedTokenRequest) Unmarshal(data []byte) bool {
 
 	var tokenType uint16
 	if !s.ReadUint16(&tokenType) ||
-		tokenType != rateLimitedTokenType ||
+		tokenType != RateLimitedTokenType ||
 		!s.ReadUint8(&r.tokenKeyID) ||
 		!s.ReadBytes(&r.blindedReq, 512) ||
 		!s.ReadBytes(&r.requestKey, 32) ||

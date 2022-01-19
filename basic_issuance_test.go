@@ -41,7 +41,7 @@ func TestBasicPublicIssuanceRoundTrip(t *testing.T) {
 	}
 
 	b := cryptobyte.NewBuilder(nil)
-	b.AddUint16(basicPublicTokenType)
+	b.AddUint16(BasicPublicTokenType)
 	b.AddBytes(nonce)
 	context := sha256.Sum256(challenge)
 	b.AddBytes(context[:])

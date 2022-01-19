@@ -187,7 +187,7 @@ func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 	}
 
 	b := cryptobyte.NewBuilder(nil)
-	b.AddUint16(rateLimitedTokenType)
+	b.AddUint16(RateLimitedTokenType)
 	b.AddBytes(nonce)
 	context := sha256.Sum256(challenge)
 	b.AddBytes(context[:])
