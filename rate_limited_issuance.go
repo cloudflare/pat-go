@@ -86,12 +86,12 @@ func encryptOriginName(nameKey PublicNameKey, tokenKeyID uint8, blindedMessage [
 type RateLimitedTokenRequestState struct {
 	tokenInput        []byte
 	blindedRequestKey []byte
-	request           RateLimitedTokenRequest
+	request           *RateLimitedTokenRequest
 	verificationKey   *rsa.PublicKey
 	verifier          blindsign.VerifierState
 }
 
-func (s RateLimitedTokenRequestState) Request() RateLimitedTokenRequest {
+func (s RateLimitedTokenRequestState) Request() *RateLimitedTokenRequest {
 	return s.request
 }
 
@@ -170,7 +170,7 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blind []byte, to
 
 	signature := ed25519.MaskSign(c.secretKey, message, blind)
 
-	request := RateLimitedTokenRequest{
+	request := &RateLimitedTokenRequest{
 		tokenKeyID:          tokenKeyID[0],
 		blindedReq:          blindedMessage,
 		requestKey:          blindedPublicKey,
@@ -304,7 +304,7 @@ func decryptOriginName(nameKey PrivateNameKey, tokenKeyID uint8, blindedMessage 
 	return string(originName), err
 }
 
-func (i RateLimitedIssuer) Evaluate(req RateLimitedTokenRequest) ([]byte, []byte, error) {
+func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byte, error) {
 	// Recover and validate the origin name
 	originName, err := decryptOriginName(i.nameKey, req.tokenKeyID, req.blindedReq, req.requestKey, req.encryptedOriginName)
 	if err != nil {

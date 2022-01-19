@@ -20,12 +20,12 @@ func NewBasicPublicClient() BasicPublicClient {
 
 type BasicPublicTokenRequestState struct {
 	tokenInput      []byte
-	request         BasicPublicTokenRequest
+	request         *BasicPublicTokenRequest
 	verificationKey *rsa.PublicKey
 	verifier        blindsign.VerifierState
 }
 
-func (s BasicPublicTokenRequestState) Request() BasicPublicTokenRequest {
+func (s BasicPublicTokenRequestState) Request() *BasicPublicTokenRequest {
 	return s.request
 }
 
@@ -79,7 +79,7 @@ func (c BasicPublicClient) CreateTokenRequest(challenge, nonce []byte, tokenKeyI
 		return BasicPublicTokenRequestState{}, err
 	}
 
-	request := BasicPublicTokenRequest{
+	request := &BasicPublicTokenRequest{
 		tokenKeyID: tokenKeyID[0],
 		blindedReq: blindedMessage,
 	}
@@ -119,7 +119,7 @@ func (i *BasicPublicIssuer) TokenKeyID() []byte {
 	return keyID
 }
 
-func (i BasicPublicIssuer) Evaluate(req BasicPublicTokenRequest) ([]byte, error) {
+func (i BasicPublicIssuer) Evaluate(req *BasicPublicTokenRequest) ([]byte, error) {
 	// Blinded signature
 	signer := blindrsa.NewRSASigner(i.tokenKey)
 	blindSignature, err := signer.BlindSign(req.blindedReq)
