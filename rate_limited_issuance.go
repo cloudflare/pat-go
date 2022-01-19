@@ -350,7 +350,7 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 	return blindSignature, blindedRequestKey, nil
 }
 
-func (i RateLimitedIssuer) EvaluateWithoutCheck(req RateLimitedTokenRequest) ([]byte, []byte, error) {
+func (i RateLimitedIssuer) EvaluateWithoutCheck(req *RateLimitedTokenRequest) ([]byte, []byte, error) {
 	// Recover and validate the origin name
 	originName, err := decryptOriginName(i.nameKey, req.tokenKeyID, req.blindedReq, req.requestKey, req.encryptedOriginName)
 	if err != nil {
