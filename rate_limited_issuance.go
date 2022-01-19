@@ -1,7 +1,6 @@
 package pat
 
 import (
-	"bytes"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
@@ -18,246 +17,6 @@ import (
 
 	"github.com/cloudflare/pat-go/ed25519"
 )
-
-// https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-configuration
-type PrivateNameKey struct {
-	id         uint8
-	suite      hpke.CipherSuite
-	privateKey hpke.KEMPrivateKey
-	publicKey  hpke.KEMPublicKey
-}
-
-func CreatePrivateNameKeyFromSeed(seed []byte) (PrivateNameKey, error) {
-	if len(seed) != 32 {
-		return PrivateNameKey{}, fmt.Errorf("Invalid seed length, expected 32 bytes")
-	}
-
-	suite, err := hpke.AssembleCipherSuite(hpke.DHKEM_X25519, hpke.KDF_HKDF_SHA256, hpke.AEAD_AESGCM128)
-	if err != nil {
-		return PrivateNameKey{}, err
-	}
-
-	sk, pk, err := suite.KEM.DeriveKeyPair(seed)
-	if err != nil {
-		return PrivateNameKey{}, err
-	}
-
-	return PrivateNameKey{
-		id:         0x01,
-		suite:      suite,
-		privateKey: sk,
-		publicKey:  pk,
-	}, nil
-}
-
-type PublicNameKey struct {
-	id         uint8
-	suite      hpke.CipherSuite
-	privateKey hpke.KEMPrivateKey
-	publicKey  hpke.KEMPublicKey
-}
-
-func (k PrivateNameKey) Public() PublicNameKey {
-	return PublicNameKey{
-		id:        k.id,
-		suite:     k.suite,
-		publicKey: k.publicKey,
-	}
-}
-
-func (k PrivateNameKey) IsEqual(o PrivateNameKey) bool {
-	if k.id != o.id {
-		return false
-	}
-	if k.suite != o.suite {
-		return false
-	}
-	if !bytes.Equal(k.suite.KEM.SerializePublicKey(k.publicKey), k.suite.KEM.SerializePublicKey(o.publicKey)) {
-		return false
-	}
-
-	return true
-}
-
-// opaque HpkePublicKey[Npk]; // defined in I-D.irtf-cfrg-hpke
-// uint16 HpkeKemId;          // defined in I-D.irtf-cfrg-hpke
-// uint16 HpkeKdfId;          // defined in I-D.irtf-cfrg-hpke
-// uint16 HpkeAeadId;         // defined in I-D.irtf-cfrg-hpke
-//
-// struct {
-//   uint8 key_id;
-//   HpkeKemId kem_id;
-//   HpkePublicKey public_key;
-//   HpkeKdfId kdf_id;
-//   HpkeAeadId aead_id;
-// } NameKey;
-func (k PublicNameKey) Marshal() []byte {
-	b := cryptobyte.NewBuilder(nil)
-
-	b.AddUint8(k.id)
-	b.AddUint16(uint16(k.suite.KEM.ID()))
-	b.AddBytes(k.suite.KEM.SerializePublicKey(k.publicKey))
-	b.AddUint16(uint16(k.suite.KDF.ID()))
-	b.AddUint16(uint16(k.suite.AEAD.ID()))
-	return b.BytesOrPanic()
-}
-
-func UnmarshalPublicNameKey(data []byte) (PublicNameKey, error) {
-	s := cryptobyte.String(data)
-
-	var id uint8
-	var kemID uint16
-	if !s.ReadUint8(&id) ||
-		!s.ReadUint16(&kemID) {
-		return PublicNameKey{}, fmt.Errorf("Invalid NameKey")
-	}
-
-	kem := hpke.KEMID(kemID)
-	suite, err := hpke.AssembleCipherSuite(kem, hpke.KDF_HKDF_SHA256, hpke.AEAD_AESGCM128)
-	if err != nil {
-		return PublicNameKey{}, fmt.Errorf("Invalid NameKey")
-	}
-
-	publicKeyBytes := make([]byte, suite.KEM.PublicKeySize())
-	if !s.ReadBytes(&publicKeyBytes, len(publicKeyBytes)) {
-		return PublicNameKey{}, fmt.Errorf("Invalid NameKey")
-	}
-
-	var kdfID uint16
-	var aeadID uint16
-	if !s.ReadUint16(&kdfID) ||
-		!s.ReadUint16(&aeadID) {
-		return PublicNameKey{}, fmt.Errorf("Invalid NameKey")
-	}
-
-	suite, err = hpke.AssembleCipherSuite(kem, hpke.KDFID(kdfID), hpke.AEADID(aeadID))
-	if err != nil {
-		return PublicNameKey{}, fmt.Errorf("Invalid NameKey")
-	}
-
-	publicKey, err := suite.KEM.DeserializePublicKey(publicKeyBytes)
-	if err != nil {
-		return PublicNameKey{}, fmt.Errorf("Invalid NameKey")
-	}
-
-	return PublicNameKey{
-		id:        id,
-		suite:     suite,
-		publicKey: publicKey,
-	}, nil
-}
-
-var (
-	patTokenType = uint16(0x0003)
-)
-
-type TokenRequest interface {
-	marshal() []byte
-	unmarshal(data []byte) bool
-}
-
-type BasicTokenRequest struct {
-	raw        []byte
-	tokenType  uint16
-	tokenKeyID uint8
-	blindedReq []byte // 512 bytes
-}
-
-func (r *BasicTokenRequest) marshal() []byte {
-	if r.raw != nil {
-		return r.raw
-	}
-
-	b := cryptobyte.NewBuilder(nil)
-	b.AddUint16(r.tokenType)
-	b.AddUint8(r.tokenKeyID)
-	b.AddBytes(r.blindedReq)
-
-	r.raw = b.BytesOrPanic()
-	return r.raw
-}
-
-func (r *BasicTokenRequest) unmarshal(data []byte) bool {
-	s := cryptobyte.String(data)
-
-	if !s.ReadUint16(&r.tokenType) ||
-		!s.ReadUint8(&r.tokenKeyID) ||
-		!s.ReadBytes(&r.blindedReq, 512) {
-		return false
-	}
-
-	return true
-}
-
-// https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#section-5.3
-type RateLimitedTokenRequest struct {
-	raw                 []byte
-	tokenType           uint16
-	tokenKeyID          uint8
-	blindedReq          []byte // 512 bytes
-	requestKey          []byte // 32 bytes
-	nameKeyID           []byte // 32 bytes
-	encryptedOriginName []byte // 16-bit length prefixed slice
-	signature           []byte // 64 bytes
-}
-
-func (r RateLimitedTokenRequest) Type() uint16 {
-	return r.tokenType
-}
-
-func (r RateLimitedTokenRequest) Equal(r2 RateLimitedTokenRequest) bool {
-	if r.tokenType == r2.tokenType &&
-		r.tokenKeyID == r2.tokenKeyID &&
-		bytes.Equal(r.blindedReq, r2.blindedReq) &&
-		bytes.Equal(r.requestKey, r2.requestKey) &&
-		bytes.Equal(r.nameKeyID, r2.nameKeyID) &&
-		bytes.Equal(r.encryptedOriginName, r2.encryptedOriginName) &&
-		bytes.Equal(r.signature, r2.signature) {
-		return true
-	}
-	return false
-}
-
-func (r RateLimitedTokenRequest) Marshal() []byte {
-	b := cryptobyte.NewBuilder(nil)
-	b.AddUint16(r.tokenType)
-	b.AddUint8(r.tokenKeyID)
-	b.AddBytes(r.blindedReq)
-	b.AddBytes(r.requestKey)
-	b.AddBytes(r.nameKeyID)
-	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-		b.AddBytes(r.encryptedOriginName)
-	})
-	b.AddBytes(r.signature)
-	return b.BytesOrPanic()
-}
-
-func UnmarshalTokenRequest(data []byte) (RateLimitedTokenRequest, error) {
-	s := cryptobyte.String(data)
-
-	request := RateLimitedTokenRequest{}
-	if !s.ReadUint16(&request.tokenType) ||
-		!s.ReadUint8(&request.tokenKeyID) ||
-		!s.ReadBytes(&request.blindedReq, 512) ||
-		!s.ReadBytes(&request.requestKey, 32) ||
-		!s.ReadBytes(&request.nameKeyID, 32) {
-		return RateLimitedTokenRequest{}, fmt.Errorf("Invalid TokenRequest encoding")
-	}
-
-	var encryptedOriginName cryptobyte.String
-	if !s.ReadUint16LengthPrefixed(&encryptedOriginName) || encryptedOriginName.Empty() {
-		return RateLimitedTokenRequest{}, fmt.Errorf("Invalid TokenRequest encoding")
-	}
-	request.encryptedOriginName = make([]byte, len(encryptedOriginName))
-	copy(request.encryptedOriginName, encryptedOriginName)
-
-	s.ReadBytes(&request.signature, 64)
-	if !s.Empty() {
-		return RateLimitedTokenRequest{}, fmt.Errorf("Invalid remaining length")
-	}
-
-	return request, nil
-}
 
 func computeIndex(clientKey, indexKey ed25519.PublicKey) ([]byte, error) {
 	hkdf := hkdf.New(sha256.New, indexKey, clientKey, []byte("anon_issuer_origin_id"))
@@ -278,19 +37,19 @@ func FinalizeIndex(clientKey, blind, blindedRequestKey []byte) ([]byte, error) {
 	return computeIndex(clientKey, indexKey)
 }
 
-type Client struct {
+type RateLimitedClient struct {
 	secretKey ed25519.PrivateKey
 	publicKey ed25519.PublicKey
 }
 
-func CreateClientFromSecret(secret []byte) Client {
+func CreateRateLimitedClientFromSecret(secret []byte) RateLimitedClient {
 	if len(secret) != 32 {
 		panic("Invalid secret length")
 	}
 	secretKey := ed25519.NewKeyFromSeed(secret)
 	publicKey := secretKey.Public().(ed25519.PublicKey)
 
-	return Client{
+	return RateLimitedClient{
 		secretKey: secretKey,
 		publicKey: publicKey,
 	}
@@ -311,7 +70,7 @@ func encryptOriginName(nameKey PublicNameKey, tokenKeyID uint8, blindedMessage [
 	b.AddUint16(uint16(nameKey.suite.KEM.ID()))
 	b.AddUint16(uint16(nameKey.suite.KDF.ID()))
 	b.AddUint16(uint16(nameKey.suite.AEAD.ID()))
-	b.AddUint16(patTokenType)
+	b.AddUint16(rateLimitedTokenType)
 	b.AddUint8(tokenKeyID)
 	b.AddBytes(blindedMessage)
 	b.AddBytes(requestKey)
@@ -324,57 +83,7 @@ func encryptOriginName(nameKey PublicNameKey, tokenKeyID uint8, blindedMessage [
 	return issuerKeyID[:], encryptedOriginName, nil
 }
 
-// struct {
-//     uint16_t token_type;
-//     uint8_t nonce[32];
-//     uint8_t context[32];
-//     uint8_t key_id[32];
-//     uint8_t authenticator[Nk];
-// } Token;
-
-type Token struct {
-	TokenType     uint16
-	Nonce         []byte
-	Context       []byte
-	KeyID         []byte
-	Authenticator []byte
-}
-
-func (t Token) AuthenticatorInput() []byte {
-	b := cryptobyte.NewBuilder(nil)
-	b.AddUint16(t.TokenType)
-	b.AddBytes(t.Nonce)
-	b.AddBytes(t.Context)
-	b.AddBytes(t.KeyID)
-	return b.BytesOrPanic()
-}
-
-func (t Token) Marshal() []byte {
-	b := cryptobyte.NewBuilder(nil)
-	b.AddUint16(t.TokenType)
-	b.AddBytes(t.Nonce)
-	b.AddBytes(t.Context)
-	b.AddBytes(t.KeyID)
-	b.AddBytes(t.Authenticator)
-	return b.BytesOrPanic()
-}
-
-func UnmarshalToken(data []byte) (Token, error) {
-	s := cryptobyte.String(data)
-
-	token := Token{}
-	if !s.ReadUint16(&token.TokenType) ||
-		!s.ReadBytes(&token.Nonce, 32) ||
-		!s.ReadBytes(&token.Context, 32) ||
-		!s.ReadBytes(&token.KeyID, 32) ||
-		!s.ReadBytes(&token.Authenticator, 512) {
-		return Token{}, fmt.Errorf("Invalid Token encoding")
-	}
-
-	return token, nil
-}
-
-type TokenRequestState struct {
+type RateLimitedTokenRequestState struct {
 	tokenInput        []byte
 	blindedRequestKey []byte
 	request           RateLimitedTokenRequest
@@ -382,15 +91,15 @@ type TokenRequestState struct {
 	verifier          blindsign.VerifierState
 }
 
-func (s TokenRequestState) Request() RateLimitedTokenRequest {
+func (s RateLimitedTokenRequestState) Request() RateLimitedTokenRequest {
 	return s.request
 }
 
-func (s TokenRequestState) BlindedRequestKey() []byte {
+func (s RateLimitedTokenRequestState) BlindedRequestKey() []byte {
 	return s.blindedRequestKey
 }
 
-func (s TokenRequestState) FinalizeToken(blindSignature []byte) (Token, error) {
+func (s RateLimitedTokenRequestState) FinalizeToken(blindSignature []byte) (Token, error) {
 	signature, err := s.verifier.Finalize(blindSignature)
 	if err != nil {
 		return Token{}, err
@@ -423,17 +132,17 @@ func (s TokenRequestState) FinalizeToken(blindSignature []byte) (Token, error) {
 
 // https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-client-to-attester-request
 // https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-index-computation
-func (c Client) CreateTokenRequest(challenge, nonce, blind []byte, tokenKeyID []byte, tokenKey *rsa.PublicKey, originName string, nameKey PublicNameKey) (TokenRequestState, error) {
+func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blind []byte, tokenKeyID []byte, tokenKey *rsa.PublicKey, originName string, nameKey PublicNameKey) (RateLimitedTokenRequestState, error) {
 	blindedPublicKey, err := ed25519.BlindKey(c.publicKey, blind)
 	if err != nil {
-		return TokenRequestState{}, err
+		return RateLimitedTokenRequestState{}, err
 	}
 
 	verifier := blindrsa.NewRSAVerifier(tokenKey, sha512.New384())
 
 	context := sha256.Sum256(challenge)
 	token := Token{
-		TokenType:     patTokenType,
+		TokenType:     rateLimitedTokenType,
 		Nonce:         nonce,
 		Context:       context[:],
 		KeyID:         tokenKeyID,
@@ -442,16 +151,16 @@ func (c Client) CreateTokenRequest(challenge, nonce, blind []byte, tokenKeyID []
 	tokenInput := token.AuthenticatorInput()
 	blindedMessage, verifierState, err := verifier.Blind(rand.Reader, tokenInput)
 	if err != nil {
-		return TokenRequestState{}, err
+		return RateLimitedTokenRequestState{}, err
 	}
 
 	nameKeyID, encryptedOriginName, err := encryptOriginName(nameKey, tokenKeyID[0], blindedMessage, blindedPublicKey, originName)
 	if err != nil {
-		return TokenRequestState{}, err
+		return RateLimitedTokenRequestState{}, err
 	}
 
 	b := cryptobyte.NewBuilder(nil)
-	b.AddUint16(patTokenType)
+	b.AddUint16(rateLimitedTokenType)
 	b.AddUint8(tokenKeyID[0])
 	b.AddBytes(blindedMessage)
 	b.AddBytes(blindedPublicKey)
@@ -462,7 +171,6 @@ func (c Client) CreateTokenRequest(challenge, nonce, blind []byte, tokenKeyID []
 	signature := ed25519.MaskSign(c.secretKey, message, blind)
 
 	request := RateLimitedTokenRequest{
-		tokenType:           patTokenType,
 		tokenKeyID:          tokenKeyID[0],
 		blindedReq:          blindedMessage,
 		requestKey:          blindedPublicKey,
@@ -471,7 +179,7 @@ func (c Client) CreateTokenRequest(challenge, nonce, blind []byte, tokenKeyID []
 		signature:           signature,
 	}
 
-	requestState := TokenRequestState{
+	requestState := RateLimitedTokenRequestState{
 		tokenInput:        tokenInput,
 		blindedRequestKey: blindedPublicKey,
 		request:           request,
@@ -482,13 +190,13 @@ func (c Client) CreateTokenRequest(challenge, nonce, blind []byte, tokenKeyID []
 	return requestState, nil
 }
 
-type Issuer struct {
+type RateLimitedIssuer struct {
 	nameKey         PrivateNameKey
 	originIndexKeys map[string]ed25519.PrivateKey
 	originTokenKeys map[string]*rsa.PrivateKey
 }
 
-func NewIssuer() *Issuer {
+func NewRateLimitedIssuer() *RateLimitedIssuer {
 	suite, err := hpke.AssembleCipherSuite(hpke.DHKEM_X25519, hpke.KDF_HKDF_SHA256, hpke.AEAD_AESGCM128)
 	if err != nil {
 		return nil
@@ -508,18 +216,18 @@ func NewIssuer() *Issuer {
 		privateKey: privateKey,
 	}
 
-	return &Issuer{
+	return &RateLimitedIssuer{
 		nameKey:         nameKey,
 		originIndexKeys: make(map[string]ed25519.PrivateKey),
 		originTokenKeys: make(map[string]*rsa.PrivateKey),
 	}
 }
 
-func (i *Issuer) NameKey() PublicNameKey {
+func (i *RateLimitedIssuer) NameKey() PublicNameKey {
 	return i.nameKey.Public()
 }
 
-func (i *Issuer) AddOrigin(origin string) error {
+func (i *RateLimitedIssuer) AddOrigin(origin string) error {
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		return err
@@ -536,7 +244,7 @@ func (i *Issuer) AddOrigin(origin string) error {
 	return nil
 }
 
-func (i *Issuer) OriginIndexKey(origin string) ed25519.PrivateKey {
+func (i *RateLimitedIssuer) OriginIndexKey(origin string) ed25519.PrivateKey {
 	key, ok := i.originIndexKeys[origin]
 	if !ok {
 		return nil
@@ -544,7 +252,7 @@ func (i *Issuer) OriginIndexKey(origin string) ed25519.PrivateKey {
 	return key
 }
 
-func (i *Issuer) OriginTokenKey(origin string) *rsa.PublicKey {
+func (i *RateLimitedIssuer) OriginTokenKey(origin string) *rsa.PublicKey {
 	key, ok := i.originTokenKeys[origin]
 	if !ok {
 		return nil
@@ -552,7 +260,7 @@ func (i *Issuer) OriginTokenKey(origin string) *rsa.PublicKey {
 	return &key.PublicKey
 }
 
-func (i *Issuer) OriginTokenKeyID(origin string) []byte {
+func (i *RateLimitedIssuer) OriginTokenKeyID(origin string) []byte {
 	// key, ok := i.originTokenKeys[origin]
 	// if !ok {
 	// 	return nil
@@ -573,7 +281,7 @@ func decryptOriginName(nameKey PrivateNameKey, tokenKeyID uint8, blindedMessage 
 	b.AddUint16(uint16(nameKey.suite.KEM.ID()))
 	b.AddUint16(uint16(nameKey.suite.KDF.ID()))
 	b.AddUint16(uint16(nameKey.suite.AEAD.ID()))
-	b.AddUint16(patTokenType)
+	b.AddUint16(rateLimitedTokenType)
 	b.AddUint8(tokenKeyID)
 	b.AddBytes(blindedMessage)
 	b.AddBytes(requestKey)
@@ -596,7 +304,7 @@ func decryptOriginName(nameKey PrivateNameKey, tokenKeyID uint8, blindedMessage 
 	return string(originName), err
 }
 
-func (i Issuer) Evaluate(req RateLimitedTokenRequest) ([]byte, []byte, error) {
+func (i RateLimitedIssuer) Evaluate(req RateLimitedTokenRequest) ([]byte, []byte, error) {
 	// Recover and validate the origin name
 	originName, err := decryptOriginName(i.nameKey, req.tokenKeyID, req.blindedReq, req.requestKey, req.encryptedOriginName)
 	if err != nil {
@@ -614,7 +322,7 @@ func (i Issuer) Evaluate(req RateLimitedTokenRequest) ([]byte, []byte, error) {
 
 	// Verify the request signature
 	b := cryptobyte.NewBuilder(nil)
-	b.AddUint16(patTokenType)
+	b.AddUint16(rateLimitedTokenType)
 	b.AddUint8(req.tokenKeyID)
 	b.AddBytes(req.blindedReq)
 	b.AddBytes(req.requestKey)
@@ -642,7 +350,7 @@ func (i Issuer) Evaluate(req RateLimitedTokenRequest) ([]byte, []byte, error) {
 	return blindSignature, blindedRequestKey, nil
 }
 
-func (i Issuer) EvaluateWithoutCheck(req RateLimitedTokenRequest) ([]byte, []byte, error) {
+func (i RateLimitedIssuer) EvaluateWithoutCheck(req RateLimitedTokenRequest) ([]byte, []byte, error) {
 	// Recover and validate the origin name
 	originName, err := decryptOriginName(i.nameKey, req.tokenKeyID, req.blindedReq, req.requestKey, req.encryptedOriginName)
 	if err != nil {

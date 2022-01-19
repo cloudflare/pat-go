@@ -101,49 +101,6 @@ func loadPrivateKey(t *testing.T) *rsa.PrivateKey {
 	return privateKey
 }
 
-func TestRequestMarshal(t *testing.T) {
-	issuer := NewIssuer()
-	testOrigin := "origin.example"
-	issuer.AddOrigin(testOrigin)
-
-	publicKey, secretKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Error(err)
-	}
-
-	client := Client{
-		secretKey: secretKey,
-		publicKey: publicKey,
-	}
-
-	challenge := make([]byte, 32)
-	rand.Reader.Read(challenge)
-
-	blind := make([]byte, 32)
-	rand.Reader.Read(blind)
-
-	nonce := make([]byte, 32)
-	rand.Reader.Read(nonce)
-
-	tokenKeyID := issuer.OriginTokenKeyID(testOrigin)
-	tokenPublicKey := issuer.OriginTokenKey(testOrigin)
-
-	requestState, err := client.CreateTokenRequest(challenge, nonce, blind, tokenKeyID, tokenPublicKey, testOrigin, issuer.NameKey())
-	if err != nil {
-		t.Error(err)
-	}
-
-	tokenRequest := requestState.Request()
-	tokenRequestEnc := tokenRequest.Marshal()
-	tokenRequestRecovered, err := UnmarshalTokenRequest(tokenRequestEnc)
-	if err != nil {
-		t.Error(err)
-	}
-	if !tokenRequest.Equal(tokenRequestRecovered) {
-		t.Fatal("Token marshal mismatch")
-	}
-}
-
 func TestSignatureDifferences(t *testing.T) {
 	_, secretKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -168,8 +125,8 @@ func TestSignatureDifferences(t *testing.T) {
 	}
 }
 
-func TestIssuanceRoundTrip(t *testing.T) {
-	issuer := NewIssuer()
+func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
+	issuer := NewRateLimitedIssuer()
 	testOrigin := "origin.example"
 	issuer.AddOrigin(testOrigin)
 
@@ -178,7 +135,7 @@ func TestIssuanceRoundTrip(t *testing.T) {
 		t.Error(err)
 	}
 
-	client := Client{
+	client := RateLimitedClient{
 		secretKey: secretKey,
 		publicKey: publicKey,
 	}
@@ -230,7 +187,7 @@ func TestIssuanceRoundTrip(t *testing.T) {
 	}
 
 	b := cryptobyte.NewBuilder(nil)
-	b.AddUint16(patTokenType)
+	b.AddUint16(rateLimitedTokenType)
 	b.AddBytes(nonce)
 	context := sha256.Sum256(challenge)
 	b.AddBytes(context[:])
