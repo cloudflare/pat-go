@@ -15,6 +15,7 @@ $ make vectors
 This will produce three JSON files:
 
 - ed25519-blinding-test-vectors.json: Test vectors for ed25519 key blinding and signing.
+- ecdsa-blinding-test-vectors.json: Test vectors for ECDSA key blinding and signing.
 - index-test-vectors.json: Test vectors for the client-origin index computation.
 - origin-encryption-test-vectors.json: Test vectors for origin name encrpytion.
 
@@ -30,6 +31,20 @@ To check test vectors, run:
 
 ```
 $ ED25519_BLINDING_TEST_VECTORS_IN=ed25519-blinding-test-vectors.json go test -v -run TestVectorVerifyEd25519Blinding
+```
+
+### ECDSA key blinding test vector generation
+
+To generate test vectors, run:
+
+```
+$ ECDSA_BLINDING_TEST_VECTORS_OUT=ecdsa-blinding-test-vectors.json go test -v -run TestVectorGenerateECDSABlinding
+```
+
+To check test vectors, run:
+
+```
+$ ECDSA_BLINDING_TEST_VECTORS_IN=ecdsa-blinding-test-vectors.json go test -v -run TestVectorVerifyECDSABlinding
 ```
 
 ### PAT index computation test vector generation
