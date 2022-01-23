@@ -112,10 +112,10 @@ func TestSignatureDifferences(t *testing.T) {
 
 	blind := make([]byte, 32)
 	rand.Reader.Read(blind)
-	signature1 := ed25519.MaskSign(secretKey, message, blind)
+	signature1 := ed25519.BlindKeySign(secretKey, message, blind)
 
 	rand.Reader.Read(blind)
-	signature2 := ed25519.MaskSign(secretKey, message, blind)
+	signature2 := ed25519.BlindKeySign(secretKey, message, blind)
 
 	if bytes.Equal(signature1[:32], signature2[:32]) {
 		t.Fatal("Signature prefix matched when it should vary")
@@ -163,7 +163,7 @@ func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 		t.Error(err)
 	}
 
-	expectedIndexKey, err := ed25519.BlindKey(publicKey, originIndexKey.Seed())
+	expectedIndexKey, err := ed25519.BlindPublicKey(publicKey, originIndexKey.Seed())
 	if err != nil {
 		t.Error(err)
 	}
@@ -524,17 +524,17 @@ func generateIndexTestVector(t *testing.T) indexTestVector {
 	blind := make([]byte, 32)
 	rand.Reader.Read(blind)
 
-	requestKey, err := ed25519.BlindKey(clientPublicKey, blind)
+	requestKey, err := ed25519.BlindPublicKey(clientPublicKey, blind)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	blindedRequestKey, err := ed25519.BlindKey(requestKey, originSecretKey.Seed())
+	blindedRequestKey, err := ed25519.BlindPublicKey(requestKey, originSecretKey.Seed())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	indexKey, err := ed25519.UnblindKey(blindedRequestKey, blind)
+	indexKey, err := ed25519.UnblindPublicKey(blindedRequestKey, blind)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -556,17 +556,17 @@ func generateIndexTestVector(t *testing.T) indexTestVector {
 }
 
 func verifyIndexTestVector(t *testing.T, vector indexTestVector) {
-	requestKey, err := ed25519.BlindKey(vector.clientPublic, vector.requestBlind)
+	requestKey, err := ed25519.BlindPublicKey(vector.clientPublic, vector.requestBlind)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	blindedRequestKey, err := ed25519.BlindKey(requestKey, vector.originSecret.Seed())
+	blindedRequestKey, err := ed25519.BlindPublicKey(requestKey, vector.originSecret.Seed())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	indexKey, err := ed25519.UnblindKey(blindedRequestKey, vector.requestBlind)
+	indexKey, err := ed25519.UnblindPublicKey(blindedRequestKey, vector.requestBlind)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -722,13 +722,13 @@ func generateEd25519BlindingTestVector(t *testing.T, blindLen int) ed25519Blindi
 	blindKey := ed25519.NewKeyFromSeed(skB)
 	blindPublicKey := blindKey.Public().(ed25519.PublicKey)
 
-	publicBlind, err := ed25519.BlindKey(publicKey, skB)
+	publicBlind, err := ed25519.BlindPublicKey(publicKey, skB)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	message := []byte("hello world")
-	signature := ed25519.MaskSign(privateKey, message, skB)
+	signature := ed25519.BlindKeySign(privateKey, message, skB)
 
 	return ed25519BlindingTestVector{
 		skS:       skS,
@@ -748,7 +748,7 @@ func verifyEd25519BlindingTestVector(t *testing.T, vector ed25519BlindingTestVec
 		t.Fatal("Public key mismatch")
 	}
 
-	publicBlind, err := ed25519.BlindKey(publicKey, vector.skB)
+	publicBlind, err := ed25519.BlindPublicKey(publicKey, vector.skB)
 	if err != nil {
 		t.Fatal("BlindKey failed")
 	}

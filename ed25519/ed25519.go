@@ -110,8 +110,8 @@ func GenerateKey(rand io.Reader) (PublicKey, PrivateKey, error) {
 	return publicKey, privateKey, nil
 }
 
-// BlindKey augments the public key pair by the blind seed.
-func BlindKey(publicKey PublicKey, blind []byte) (PublicKey, error) {
+// BlindPublicKey augments the public key pair by the blind seed.
+func BlindPublicKey(publicKey PublicKey, blind []byte) (PublicKey, error) {
 	b := sha512.Sum512(blind)
 	r := edwards25519.NewScalar().SetBytesWithClamping(b[:32])
 
@@ -126,8 +126,8 @@ func BlindKey(publicKey PublicKey, blind []byte) (PublicKey, error) {
 	return blindedKey, nil
 }
 
-// UnblindKey unblinds the public key pair by the blind seed.
-func UnblindKey(publicKey PublicKey, blind []byte) (PublicKey, error) {
+// UnblindPublicKey unblinds the public key pair by the blind seed.
+func UnblindPublicKey(publicKey PublicKey, blind []byte) (PublicKey, error) {
 	b := sha512.Sum512(blind)
 	r := edwards25519.NewScalar().SetBytesWithClamping(b[:32])
 	rInv := edwards25519.NewScalar().Set(r).ModInverse()
@@ -216,9 +216,9 @@ func sign(signature, privateKey, message []byte) {
 	signInternal(signature, publicKey, message, prefix, s)
 }
 
-// MaskSign signs the message with privateKey blinded by blind and returns a
+// BlindKeySign signs the message with privateKey blinded by blind and returns a
 // signature. It will panic if len(privateKey) is not PrivateKeySize.
-func MaskSign(privateKey PrivateKey, message, blind []byte) []byte {
+func BlindKeySign(privateKey PrivateKey, message, blind []byte) []byte {
 	// Outline the function body so that the returned signature can be
 	// stack-allocated.
 	signature := make([]byte, SignatureSize)

@@ -60,8 +60,7 @@ func (s BasicPublicTokenRequestState) FinalizeToken(blindSignature []byte) (Toke
 	return token, nil
 }
 
-// https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-client-to-attester-request
-// https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-index-computation
+// https://ietf-wg-privacypass.github.io/base-drafts/caw/pp-issuance/draft-ietf-privacypass-protocol.html#name-issuance-protocol-for-publi
 func (c BasicPublicClient) CreateTokenRequest(challenge, nonce []byte, tokenKeyID []byte, tokenKey *rsa.PublicKey) (BasicPublicTokenRequestState, error) {
 	verifier := blindrsa.NewRSAVerifier(tokenKey, sha512.New384())
 

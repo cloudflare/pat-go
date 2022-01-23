@@ -47,13 +47,13 @@ func TestMaskSignVerify(t *testing.T) {
 	blind := make([]byte, 32)
 	rand.Reader.Read(blind)
 
-	blindedKey, err := BlindKey(public, blind)
+	blindedKey, err := BlindPublicKey(public, blind)
 	if err != nil {
 		t.Errorf("failed to blind public key")
 	}
 
 	message := []byte("test message")
-	sig := MaskSign(private, message, blind)
+	sig := BlindKeySign(private, message, blind)
 	if !Verify(blindedKey, message, sig) {
 		t.Errorf("valid signature rejected")
 	}
@@ -70,12 +70,12 @@ func TestBlindUnblindKey(t *testing.T) {
 	blind := make([]byte, 32)
 	rand.Reader.Read(blind)
 
-	blindedKey, err := BlindKey(publicKey, blind)
+	blindedKey, err := BlindPublicKey(publicKey, blind)
 	if err != nil {
 		t.Errorf("failed to blind public key")
 	}
 
-	unblindedKey, err := UnblindKey(blindedKey, blind)
+	unblindedKey, err := UnblindPublicKey(blindedKey, blind)
 	if err != nil {
 		t.Errorf("failed to blind public key")
 	}

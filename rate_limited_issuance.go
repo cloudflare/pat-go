@@ -29,7 +29,7 @@ func computeIndex(clientKey, indexKey ed25519.PublicKey) ([]byte, error) {
 
 // https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-attester-behavior-mapping-o
 func FinalizeIndex(clientKey, blind, blindedRequestKey []byte) ([]byte, error) {
-	indexKey, err := ed25519.UnblindKey(blindedRequestKey, blind)
+	indexKey, err := ed25519.UnblindPublicKey(blindedRequestKey, blind)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +133,7 @@ func (s RateLimitedTokenRequestState) FinalizeToken(blindSignature []byte) (Toke
 // https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-client-to-attester-request
 // https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-index-computation
 func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blind []byte, tokenKeyID []byte, tokenKey *rsa.PublicKey, originName string, nameKey PublicNameKey) (RateLimitedTokenRequestState, error) {
-	blindedPublicKey, err := ed25519.BlindKey(c.publicKey, blind)
+	blindedPublicKey, err := ed25519.BlindPublicKey(c.publicKey, blind)
 	if err != nil {
 		return RateLimitedTokenRequestState{}, err
 	}
@@ -168,7 +168,7 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blind []byte, to
 	b.AddBytes(encryptedOriginName)
 	message := b.BytesOrPanic()
 
-	signature := ed25519.MaskSign(c.secretKey, message, blind)
+	signature := ed25519.BlindKeySign(c.secretKey, message, blind)
 
 	request := &RateLimitedTokenRequest{
 		tokenKeyID:          tokenKeyID[0],
@@ -320,6 +320,8 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 		return nil, nil, fmt.Errorf("Unknown origin: %s", string(originName))
 	}
 
+	// XXX(caw): factor out functionality above, and also check the keyID
+
 	// Verify the request signature
 	b := cryptobyte.NewBuilder(nil)
 	b.AddUint16(RateLimitedTokenType)
@@ -335,7 +337,7 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 	}
 
 	// Blinded key
-	blindedRequestKey, err := ed25519.BlindKey(req.requestKey, originIndexKey.Seed())
+	blindedRequestKey, err := ed25519.BlindPublicKey(req.requestKey, originIndexKey.Seed())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -367,7 +369,7 @@ func (i RateLimitedIssuer) EvaluateWithoutCheck(req *RateLimitedTokenRequest) ([
 	}
 
 	// Blinded key
-	blindedRequestKey, err := ed25519.BlindKey(req.requestKey, originIndexKey.Seed())
+	blindedRequestKey, err := ed25519.BlindPublicKey(req.requestKey, originIndexKey.Seed())
 	if err != nil {
 		return nil, nil, err
 	}
