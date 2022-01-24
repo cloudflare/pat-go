@@ -230,8 +230,10 @@ func maskSign(signature, privateKey, blind, message []byte) {
 	if l := len(privateKey); l != PrivateKeySize {
 		panic("ed25519: bad private key length: " + strconv.Itoa(l))
 	}
+	if l := len(blind); l != PrivateKeySize {
+		panic("ed25519: bad blind length: " + strconv.Itoa(l))
+	}
 
-	// XXX(caw): should we require the blind length to be a certain value
 	b := sha512.Sum512(blind)
 	r := edwards25519.NewScalar().SetBytesWithClamping(b[:32])
 	mask := b[32:]
