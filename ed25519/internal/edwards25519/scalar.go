@@ -173,6 +173,22 @@ func (s *Scalar) SetBytesWithClamping(x []byte) *Scalar {
 	return s
 }
 
+// SetBytes sets the scalar to the value represented by the byte string. The input
+// must be 32 bytes, and it is not modified.
+func (s *Scalar) SetBytes(x []byte) *Scalar {
+	// The description above omits the purpose of the high bits of the clamping
+	// for brevity, but those are also lost to reductions, and are also
+	// irrelevant to edwards25519 as they protect against a specific
+	// implementation bug that was once observed in a generic Montgomery ladder.
+	if len(x) != 32 {
+		panic("edwards25519: invalid SetBytesWithClamping input length")
+	}
+	var wideBytes [64]byte
+	copy(wideBytes[:], x[:])
+	scReduce(&s.s, &wideBytes)
+	return s
+}
+
 // Bytes returns the canonical 32-byte little-endian encoding of s.
 func (s *Scalar) Bytes() []byte {
 	buf := make([]byte, 32)
