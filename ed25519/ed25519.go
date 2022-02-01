@@ -230,7 +230,7 @@ func maskSign(signature, privateKey, blind, message []byte) {
 	if l := len(privateKey); l != PrivateKeySize {
 		panic("ed25519: bad private key length: " + strconv.Itoa(l))
 	}
-	if l := len(blind); l != PrivateKeySize {
+	if l := len(blind); l != 32 {
 		panic("ed25519: bad blind length: " + strconv.Itoa(l))
 	}
 
