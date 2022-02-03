@@ -113,7 +113,7 @@ func GenerateKey(rand io.Reader) (PublicKey, PrivateKey, error) {
 // BlindPublicKey augments the public key pair by the blind seed.
 func BlindPublicKey(publicKey PublicKey, blind []byte) (PublicKey, error) {
 	b := sha512.Sum512(blind)
-	r := edwards25519.NewScalar().SetBytesWithClamping(b[:32])
+	r := edwards25519.NewScalar().SetBytes(b[:32])
 
 	P, err := (&edwards25519.Point{}).SetBytes(publicKey)
 	if err != nil {
@@ -129,7 +129,7 @@ func BlindPublicKey(publicKey PublicKey, blind []byte) (PublicKey, error) {
 // UnblindPublicKey unblinds the public key pair by the blind seed.
 func UnblindPublicKey(publicKey PublicKey, blind []byte) (PublicKey, error) {
 	b := sha512.Sum512(blind)
-	r := edwards25519.NewScalar().SetBytesWithClamping(b[:32])
+	r := edwards25519.NewScalar().SetBytes(b[:32])
 	rInv := edwards25519.NewScalar().Set(r).ModInverse()
 
 	P, err := (&edwards25519.Point{}).SetBytes(publicKey)
@@ -222,11 +222,11 @@ func BlindKeySign(privateKey PrivateKey, message, blind []byte) []byte {
 	// Outline the function body so that the returned signature can be
 	// stack-allocated.
 	signature := make([]byte, SignatureSize)
-	maskSign(signature, privateKey, blind, message)
+	blindKeySign(signature, privateKey, blind, message)
 	return signature
 }
 
-func maskSign(signature, privateKey, blind, message []byte) {
+func blindKeySign(signature, privateKey, blind, message []byte) {
 	if l := len(privateKey); l != PrivateKeySize {
 		panic("ed25519: bad private key length: " + strconv.Itoa(l))
 	}
@@ -235,13 +235,14 @@ func maskSign(signature, privateKey, blind, message []byte) {
 	}
 
 	b := sha512.Sum512(blind)
-	r := edwards25519.NewScalar().SetBytesWithClamping(b[:32])
-	mask := b[32:]
+	r := edwards25519.NewScalar().SetBytes(b[:32])
+	prefix2 := b[32:]
 
 	seed, publicKey := privateKey[:SeedSize], privateKey[SeedSize:]
 	h := sha512.Sum512(seed)
 	k := edwards25519.NewScalar().SetBytesWithClamping(h[:32])
-	prefix := append(h[32:], mask...)
+	prefix1 := h[32:]
+	prefix := append(prefix1, prefix2...)
 
 	s := edwards25519.NewScalar().Multiply(k, r)
 
