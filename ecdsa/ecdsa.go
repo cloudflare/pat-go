@@ -293,11 +293,11 @@ func signGeneric(priv *PrivateKey, csprng *cipher.StreamReader, c elliptic.Curve
 			}
 		}
 
-		e := hashToInt(hash, c)
-		s = new(big.Int).Mul(priv.D, r)
-		s.Add(s, e)
-		s.Mul(s, kInv)
-		s.Mod(s, N) // N != 0
+		e := hashToInt(hash, c)         // z1
+		s = new(big.Int).Mul(priv.D, r) // axr
+		s.Add(s, e)                     // z1 + axr
+		s.Mul(s, kInv)                  // t^(-1) * (x1 + axr)
+		s.Mod(s, N)                     // N != 0
 		if s.Sign() != 0 {
 			break
 		}
