@@ -57,6 +57,44 @@ func testKeyGeneration(t *testing.T, c elliptic.Curve) {
 	}
 }
 
+// https://eprint.iacr.org/2015/1135.pdf
+// Section 4.2: Related-Key Attack against DSA
+func testRelatedKeySignOracleAttack(t *testing.T, c elliptic.Curve) {
+	skS, _ := GenerateKey(c, rand.Reader)
+
+	m0 := []byte("m0")
+	m1 := []byte("m1")
+	z0 := hashToInt(m0, c)
+	z1 := hashToInt(m1, c)
+	z0Inv := new(big.Int).ModInverse(z0, c.Params().N)
+	a := new(big.Int).Mul(z1, z0Inv)
+	a.Mod(a, c.Params().N)
+	aKey := &PrivateKey{
+		D: a,
+	}
+
+	// Signature: (r, s = t^(-1)(x1 + axr))
+	r, s, err := BlindKeySign(rand.Reader, skS, aKey, m1)
+	if err != nil {
+		t.Errorf("BlindKeySign error: %s", err)
+		return
+	}
+
+	// Forgery: m* = m0, (r*, s*) = (r, (s/a) mod q)
+	rForge := r
+	aInv := new(big.Int).ModInverse(a, c.Params().N)
+	sForge := new(big.Int).Mul(s, aInv)
+	sForge.Mod(sForge, c.Params().N)
+
+	if !Verify(&skS.PublicKey, m0, rForge, sForge) {
+		t.Errorf("Verify failed")
+	}
+}
+
+func TestRelatedKeySignOracleAttack(t *testing.T) {
+	testAllCurves(t, testRelatedKeySignOracleAttack)
+}
+
 func TestBlindKeySign(t *testing.T) {
 	testAllCurves(t, testBlindKeySign)
 }
