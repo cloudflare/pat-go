@@ -3,6 +3,7 @@ package pat
 import (
 	"bytes"
 	"crypto"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -19,6 +20,7 @@ import (
 	hpke "github.com/cisco/go-hpke"
 	"golang.org/x/crypto/cryptobyte"
 
+	"github.com/cloudflare/pat-go/ecdsa"
 	"github.com/cloudflare/pat-go/ed25519"
 )
 
@@ -127,15 +129,9 @@ func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 	testOrigin := "origin.example"
 	issuer.AddOrigin(testOrigin)
 
-	publicKey, secretKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Error(err)
-	}
-
-	client := RateLimitedClient{
-		secretKey: secretKey,
-		publicKey: publicKey,
-	}
+	curve := elliptic.P256()
+	secretKey, err := ecdsa.GenerateKey(curve, rand.Reader)
+	client := CreateRateLimitedClientFromSecret(secretKey.D.Bytes())
 
 	challenge := make([]byte, 32)
 	rand.Reader.Read(challenge)
@@ -160,16 +156,20 @@ func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 		t.Error(err)
 	}
 
-	expectedIndexKey, err := ed25519.BlindPublicKey(publicKey, originIndexKey.Seed())
+	publicKeyEnc := elliptic.Marshal(curve, client.secretKey.PublicKey.X, client.secretKey.PublicKey.Y)
+
+	expectedIndexKey, err := ecdsa.BlindPublicKey(curve, &client.secretKey.PublicKey, originIndexKey)
 	if err != nil {
 		t.Error(err)
 	}
-	expectedIndex, err := computeIndex(publicKey, expectedIndexKey)
+	expectedIndexKeyEnc := elliptic.Marshal(curve, expectedIndexKey.X, expectedIndexKey.Y)
+
+	expectedIndex, err := computeIndex(publicKeyEnc, expectedIndexKeyEnc)
 	if err != nil {
 		t.Error(err)
 	}
 
-	index, err := FinalizeIndex(publicKey, blind, blindedPublicKey)
+	index, err := FinalizeIndex(publicKeyEnc, blind, blindedPublicKey)
 	if err != nil {
 		t.Error(err)
 	}
@@ -446,7 +446,7 @@ type rawIndexTestVector struct {
 	ClientSecret  string `json:"CLIENT_SECRET"`
 	ClientPublic  string `json:"CLIENT_PUBLIC"`
 	OriginSecret  string `json:"ORIGIN_SECRET"`
-	RequestBlind  string `json:"REQUES_BLIND"`
+	RequestBlind  string `json:"BLIND_KEY"`
 	IndexRequest  string `json:"INDEX_REQUEST"`
 	IndexResponse string `json:"INDEX_RESPONSE"`
 	Index         string `json:"INDEX"`
@@ -454,10 +454,10 @@ type rawIndexTestVector struct {
 
 type indexTestVector struct {
 	t             *testing.T
-	clientSecret  ed25519.PrivateKey
-	clientPublic  ed25519.PublicKey
-	originSecret  ed25519.PrivateKey
-	requestBlind  []byte
+	curve         elliptic.Curve
+	clientSecret  *ecdsa.PrivateKey
+	originSecret  *ecdsa.PrivateKey
+	requestBlind  *ecdsa.PrivateKey
 	indexRequest  []byte
 	indexResponse []byte
 	index         []byte
@@ -485,11 +485,16 @@ func (tva *indexTestVectorArray) UnmarshalJSON(data []byte) error {
 }
 
 func (etv indexTestVector) MarshalJSON() ([]byte, error) {
+	clientSecretKey := etv.clientSecret.D.Bytes()
+	clientPublicKey := elliptic.Marshal(etv.curve, etv.clientSecret.X, etv.clientSecret.Y)
+	originSecretKey := etv.originSecret.D.Bytes()
+	blindKey := etv.requestBlind.D.Bytes()
+
 	return json.Marshal(rawIndexTestVector{
-		ClientSecret:  mustHex(etv.clientSecret.Seed()),
-		ClientPublic:  mustHex(etv.clientPublic),
-		OriginSecret:  mustHex(etv.originSecret.Seed()),
-		RequestBlind:  mustHex(etv.requestBlind),
+		ClientSecret:  mustHex(clientSecretKey),
+		ClientPublic:  mustHex(clientPublicKey),
+		OriginSecret:  mustHex(originSecretKey),
+		RequestBlind:  mustHex(blindKey),
 		IndexRequest:  mustHex(etv.indexRequest),
 		IndexResponse: mustHex(etv.indexResponse),
 		Index:         mustHex(etv.index),
@@ -503,10 +508,27 @@ func (etv *indexTestVector) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	etv.clientSecret = ed25519.NewKeyFromSeed(mustUnhex(nil, raw.ClientSecret))
-	etv.clientPublic = mustUnhex(nil, raw.ClientPublic)
-	etv.originSecret = ed25519.NewKeyFromSeed(mustUnhex(nil, raw.OriginSecret))
-	etv.requestBlind = mustUnhex(nil, raw.RequestBlind)
+	curve := elliptic.P256()
+
+	clientSecretKey, err := ecdsa.CreateKey(curve, mustUnhex(nil, raw.ClientSecret))
+	if err != nil {
+		return err
+	}
+
+	originKey, err := ecdsa.CreateKey(curve, mustUnhex(nil, raw.OriginSecret))
+	if err != nil {
+		return err
+	}
+
+	blindKey, err := ecdsa.CreateKey(curve, mustUnhex(nil, raw.RequestBlind))
+	if err != nil {
+		return err
+	}
+
+	etv.curve = curve
+	etv.clientSecret = clientSecretKey
+	etv.originSecret = originKey
+	etv.requestBlind = blindKey
 	etv.indexRequest = mustUnhex(nil, raw.IndexRequest)
 	etv.indexResponse = mustUnhex(nil, raw.IndexResponse)
 	etv.index = mustUnhex(nil, raw.Index)
@@ -515,68 +537,77 @@ func (etv *indexTestVector) UnmarshalJSON(data []byte) error {
 }
 
 func generateIndexTestVector(t *testing.T) indexTestVector {
-	clientPublicKey, clientSecretKey, err := ed25519.GenerateKey(rand.Reader)
-	_, originSecretKey, err := ed25519.GenerateKey(rand.Reader)
+	curve := elliptic.P256()
+	clientSecretKey, _ := ecdsa.GenerateKey(curve, rand.Reader)
+	originSecretKey, _ := ecdsa.GenerateKey(curve, rand.Reader)
+	clientBlindKey, _ := ecdsa.GenerateKey(curve, rand.Reader)
 
-	blind := make([]byte, 32)
-	rand.Reader.Read(blind)
-
-	requestKey, err := ed25519.BlindPublicKey(clientPublicKey, blind)
+	requestKey, err := ecdsa.BlindPublicKey(curve, &clientSecretKey.PublicKey, clientBlindKey)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	blindedRequestKey, err := ed25519.BlindPublicKey(requestKey, originSecretKey.Seed())
+	blindedRequestKey, err := ecdsa.BlindPublicKey(curve, requestKey, originSecretKey)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	indexKey, err := ed25519.UnblindPublicKey(blindedRequestKey, blind)
+	indexKey, err := ecdsa.UnblindPublicKey(curve, blindedRequestKey, clientBlindKey)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	index, err := computeIndex(clientPublicKey, indexKey)
+	requestKeyEnc := elliptic.Marshal(curve, requestKey.X, requestKey.Y)
+	blindedRequestKeyEnc := elliptic.Marshal(curve, blindedRequestKey.X, blindedRequestKey.Y)
+	clientPublicKeyEnc := elliptic.Marshal(curve, clientSecretKey.X, clientSecretKey.Y)
+	indexKeyEnc := elliptic.Marshal(curve, indexKey.X, indexKey.Y)
+
+	index, err := computeIndex(clientPublicKeyEnc, indexKeyEnc)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	return indexTestVector{
+		curve:         curve,
 		clientSecret:  clientSecretKey,
-		clientPublic:  clientPublicKey,
 		originSecret:  originSecretKey,
-		requestBlind:  blind,
-		indexRequest:  requestKey,
-		indexResponse: blindedRequestKey,
+		requestBlind:  clientBlindKey,
+		indexRequest:  requestKeyEnc,
+		indexResponse: blindedRequestKeyEnc,
 		index:         index,
 	}
 }
 
 func verifyIndexTestVector(t *testing.T, vector indexTestVector) {
-	requestKey, err := ed25519.BlindPublicKey(vector.clientPublic, vector.requestBlind)
+	requestKey, err := ecdsa.BlindPublicKey(vector.curve, &vector.clientSecret.PublicKey, vector.requestBlind)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	blindedRequestKey, err := ed25519.BlindPublicKey(requestKey, vector.originSecret.Seed())
+	blindedRequestKey, err := ecdsa.BlindPublicKey(vector.curve, requestKey, vector.originSecret)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	indexKey, err := ed25519.UnblindPublicKey(blindedRequestKey, vector.requestBlind)
+	indexKey, err := ecdsa.UnblindPublicKey(vector.curve, blindedRequestKey, vector.requestBlind)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	index, err := computeIndex(vector.clientPublic, indexKey)
+	requestKeyEnc := elliptic.Marshal(vector.curve, requestKey.X, requestKey.Y)
+	blindedRequestKeyEnc := elliptic.Marshal(vector.curve, blindedRequestKey.X, blindedRequestKey.Y)
+	clientPublicKeyEnc := elliptic.Marshal(vector.curve, vector.clientSecret.X, vector.clientSecret.Y)
+	indexKeyEnc := elliptic.Marshal(vector.curve, indexKey.X, indexKey.Y)
+
+	index, err := computeIndex(clientPublicKeyEnc, indexKeyEnc)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if !bytes.Equal(requestKey, vector.indexRequest) {
+	if !bytes.Equal(requestKeyEnc, vector.indexRequest) {
 		t.Fatal("Index request mismatch")
 	}
-	if !bytes.Equal(blindedRequestKey, vector.indexResponse) {
+	if !bytes.Equal(blindedRequestKeyEnc, vector.indexResponse) {
 		t.Fatal("Index response mismatch")
 	}
 	if !bytes.Equal(index, vector.index) {
