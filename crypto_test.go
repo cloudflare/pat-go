@@ -115,8 +115,8 @@ func (etv *ecdsaBlindingTestVector) UnmarshalJSON(data []byte) error {
 
 	curveName := raw.Curve
 	var curve elliptic.Curve
-	if curveName == elliptic.P256().Params().Name {
-		curve = elliptic.P256()
+	if curveName == elliptic.P384().Params().Name {
+		curve = elliptic.P384()
 	} else {
 		return fmt.Errorf("Unsupported curve")
 	}
@@ -231,7 +231,7 @@ func verifyECDSABlindingTestVectors(t *testing.T, encoded []byte) {
 
 func TestVectorGenerateECDSABlinding(t *testing.T) {
 	vectors := make([]ecdsaBlindingTestVector, 0)
-	vectors = append(vectors, generateECDSABlindingTestVector(t, elliptic.P256(), crypto.SHA256))
+	vectors = append(vectors, generateECDSABlindingTestVector(t, elliptic.P384(), crypto.SHA256))
 
 	// Encode the test vectors
 	encoded, err := json.Marshal(vectors)

@@ -41,7 +41,7 @@ func TestSignVerify(t *testing.T) {
 	}
 }
 
-func TestMaskSignVerify(t *testing.T) {
+func TestBlindKeySignVerify(t *testing.T) {
 	public, private, _ := GenerateKey(rand.Reader)
 
 	blind := make([]byte, 32)
