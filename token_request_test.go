@@ -13,7 +13,7 @@ func TestRequestMarshal(t *testing.T) {
 	testOrigin := "origin.example"
 	issuer.AddOrigin(testOrigin)
 
-	curve := elliptic.P256()
+	curve := elliptic.P384()
 	secretKey, err := ecdsa.GenerateKey(curve, rand.Reader)
 	blindKey, err := ecdsa.GenerateKey(curve, rand.Reader)
 	client := CreateRateLimitedClientFromSecret(secretKey.D.Bytes())

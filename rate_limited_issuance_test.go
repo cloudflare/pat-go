@@ -129,15 +129,13 @@ func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 	testOrigin := "origin.example"
 	issuer.AddOrigin(testOrigin)
 
-	curve := elliptic.P256()
+	curve := elliptic.P384()
 	secretKey, err := ecdsa.GenerateKey(curve, rand.Reader)
+	blindKey, err := ecdsa.GenerateKey(curve, rand.Reader)
 	client := CreateRateLimitedClientFromSecret(secretKey.D.Bytes())
 
 	challenge := make([]byte, 32)
 	rand.Reader.Read(challenge)
-
-	blind := make([]byte, 32)
-	rand.Reader.Read(blind)
 
 	nonce := make([]byte, 32)
 	rand.Reader.Read(nonce)
@@ -146,7 +144,7 @@ func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 	tokenPublicKey := issuer.OriginTokenKey(testOrigin)
 	originIndexKey := issuer.OriginIndexKey(testOrigin)
 
-	requestState, err := client.CreateTokenRequest(challenge, nonce, blind, tokenKeyID, tokenPublicKey, testOrigin, issuer.NameKey())
+	requestState, err := client.CreateTokenRequest(challenge, nonce, blindKey.D.Bytes(), tokenKeyID, tokenPublicKey, testOrigin, issuer.NameKey())
 	if err != nil {
 		t.Error(err)
 	}
@@ -169,7 +167,7 @@ func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 		t.Error(err)
 	}
 
-	index, err := FinalizeIndex(publicKeyEnc, blind, blindedPublicKey)
+	index, err := FinalizeIndex(publicKeyEnc, blindKey.D.Bytes(), blindedPublicKey)
 	if err != nil {
 		t.Error(err)
 	}
@@ -508,7 +506,7 @@ func (etv *indexTestVector) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	curve := elliptic.P256()
+	curve := elliptic.P384()
 
 	clientSecretKey, err := ecdsa.CreateKey(curve, mustUnhex(nil, raw.ClientSecret))
 	if err != nil {
@@ -537,7 +535,7 @@ func (etv *indexTestVector) UnmarshalJSON(data []byte) error {
 }
 
 func generateIndexTestVector(t *testing.T) indexTestVector {
-	curve := elliptic.P256()
+	curve := elliptic.P384()
 	clientSecretKey, _ := ecdsa.GenerateKey(curve, rand.Reader)
 	originSecretKey, _ := ecdsa.GenerateKey(curve, rand.Reader)
 	clientBlindKey, _ := ecdsa.GenerateKey(curve, rand.Reader)

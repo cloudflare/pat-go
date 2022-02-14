@@ -9,12 +9,12 @@ import (
 	"crypto/sha512"
 	"fmt"
 	"io"
+	"math/big"
 
 	hpke "github.com/cisco/go-hpke"
 	"github.com/cloudflare/circl/blindsign"
 	"github.com/cloudflare/circl/blindsign/blindrsa"
 	"golang.org/x/crypto/cryptobyte"
-	"golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/crypto/hkdf"
 
 	"github.com/cloudflare/pat-go/ecdsa"
@@ -31,7 +31,7 @@ func computeIndex(clientKey, indexKey []byte) ([]byte, error) {
 
 // https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-attester-behavior-mapping-o
 func FinalizeIndex(clientKey, blindEnc, blindedRequestKeyEnc []byte) ([]byte, error) {
-	curve := elliptic.P256()
+	curve := elliptic.P384()
 	x, y := elliptic.Unmarshal(curve, blindedRequestKeyEnc)
 	blindedRequestKey := &ecdsa.PublicKey{
 		curve, x, y,
@@ -58,14 +58,14 @@ type RateLimitedClient struct {
 }
 
 func CreateRateLimitedClientFromSecret(secret []byte) RateLimitedClient {
-	curve := elliptic.P256()
+	curve := elliptic.P384()
 	secretKey, err := ecdsa.CreateKey(curve, secret)
 	if err != nil {
 		panic(err)
 	}
 
 	return RateLimitedClient{
-		curve:     elliptic.P256(),
+		curve:     elliptic.P384(),
 		secretKey: secretKey,
 	}
 }
@@ -193,12 +193,12 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 	if err != nil {
 		return RateLimitedTokenRequestState{}, err
 	}
-	b = cryptobyte.NewBuilder(nil)
-	b.AddASN1(asn1.SEQUENCE, func(b *cryptobyte.Builder) {
-		b.AddASN1BigInt(r)
-		b.AddASN1BigInt(s)
-	})
-	signature := b.BytesOrPanic()
+	scalarLen := (c.curve.Params().Params().BitSize + 7) / 8
+	rEnc := make([]byte, scalarLen)
+	sEnc := make([]byte, scalarLen)
+	r.FillBytes(rEnc)
+	s.FillBytes(sEnc)
+	signature := append(rEnc, sEnc...)
 
 	request := &RateLimitedTokenRequest{
 		tokenKeyID:          tokenKeyID[0],
@@ -248,7 +248,7 @@ func NewRateLimitedIssuer() *RateLimitedIssuer {
 	}
 
 	return &RateLimitedIssuer{
-		curve:           elliptic.P256(),
+		curve:           elliptic.P384(),
 		nameKey:         nameKey,
 		originIndexKeys: make(map[string]*ecdsa.PrivateKey),
 		originTokenKeys: make(map[string]*rsa.PrivateKey),
@@ -359,6 +359,10 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 		i.curve, x, y,
 	}
 
+	scalarLen := (i.curve.Params().Params().BitSize + 7) / 8
+	r := new(big.Int).SetBytes(req.signature[:scalarLen])
+	s := new(big.Int).SetBytes(req.signature[scalarLen:])
+
 	// Verify the request signature
 	b := cryptobyte.NewBuilder(nil)
 	b.AddUint16(RateLimitedTokenType)
@@ -368,7 +372,7 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 	b.AddBytes(req.nameKeyID)
 	b.AddBytes(req.encryptedOriginName)
 	message := b.BytesOrPanic()
-	valid := ecdsa.VerifyASN1(requestKey, message, req.signature)
+	valid := ecdsa.Verify(requestKey, message, r, s)
 	if !valid {
 		return nil, nil, fmt.Errorf("Invalid request signature")
 	}

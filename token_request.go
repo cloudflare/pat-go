@@ -2,7 +2,6 @@ package pat
 
 import (
 	"bytes"
-	"fmt"
 
 	"golang.org/x/crypto/cryptobyte"
 )
@@ -68,10 +67,10 @@ type RateLimitedTokenRequest struct {
 	raw                 []byte
 	tokenKeyID          uint8
 	blindedReq          []byte // 512 bytes
-	requestKey          []byte // 65 bytes
+	requestKey          []byte // 97 bytes
 	nameKeyID           []byte // 32 bytes
 	encryptedOriginName []byte // 16-bit length prefixed slice
-	signature           []byte // variable-length
+	signature           []byte // 96 bytes
 }
 
 func (r RateLimitedTokenRequest) Type() uint16 {
@@ -88,7 +87,6 @@ func (r RateLimitedTokenRequest) Equal(r2 RateLimitedTokenRequest) bool {
 		return true
 	}
 
-	fmt.Println(r.signature, r2.signature)
 	return false
 }
 
@@ -106,9 +104,7 @@ func (r *RateLimitedTokenRequest) Marshal() []byte {
 	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
 		b.AddBytes(r.encryptedOriginName)
 	})
-	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-		b.AddBytes(r.signature)
-	})
+	b.AddBytes(r.signature)
 
 	r.raw = b.BytesOrPanic()
 	return r.raw
@@ -122,7 +118,7 @@ func (r *RateLimitedTokenRequest) Unmarshal(data []byte) bool {
 		tokenType != RateLimitedTokenType ||
 		!s.ReadUint8(&r.tokenKeyID) ||
 		!s.ReadBytes(&r.blindedReq, 512) ||
-		!s.ReadBytes(&r.requestKey, 65) ||
+		!s.ReadBytes(&r.requestKey, 97) ||
 		!s.ReadBytes(&r.nameKeyID, 32) {
 		return false
 	}
@@ -134,12 +130,10 @@ func (r *RateLimitedTokenRequest) Unmarshal(data []byte) bool {
 	r.encryptedOriginName = make([]byte, len(encryptedOriginName))
 	copy(r.encryptedOriginName, encryptedOriginName)
 
-	var signature cryptobyte.String
-	if !s.ReadUint16LengthPrefixed(&signature) || signature.Empty() {
+	s.ReadBytes(&r.signature, 96)
+	if !s.Empty() {
 		return false
 	}
-	r.signature = make([]byte, len(signature))
-	copy(r.signature, signature)
 
 	return true
 }
