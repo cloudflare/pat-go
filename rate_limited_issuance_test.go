@@ -154,13 +154,13 @@ func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 		t.Error(err)
 	}
 
-	publicKeyEnc := elliptic.Marshal(curve, client.secretKey.PublicKey.X, client.secretKey.PublicKey.Y)
+	publicKeyEnc := elliptic.MarshalCompressed(curve, client.secretKey.PublicKey.X, client.secretKey.PublicKey.Y)
 
 	expectedIndexKey, err := ecdsa.BlindPublicKey(curve, &client.secretKey.PublicKey, originIndexKey)
 	if err != nil {
 		t.Error(err)
 	}
-	expectedIndexKeyEnc := elliptic.Marshal(curve, expectedIndexKey.X, expectedIndexKey.Y)
+	expectedIndexKeyEnc := elliptic.MarshalCompressed(curve, expectedIndexKey.X, expectedIndexKey.Y)
 
 	expectedIndex, err := computeIndex(publicKeyEnc, expectedIndexKeyEnc)
 	if err != nil {
@@ -484,7 +484,7 @@ func (tva *indexTestVectorArray) UnmarshalJSON(data []byte) error {
 
 func (etv indexTestVector) MarshalJSON() ([]byte, error) {
 	clientSecretKey := etv.clientSecret.D.Bytes()
-	clientPublicKey := elliptic.Marshal(etv.curve, etv.clientSecret.X, etv.clientSecret.Y)
+	clientPublicKey := elliptic.MarshalCompressed(etv.curve, etv.clientSecret.X, etv.clientSecret.Y)
 	originSecretKey := etv.originSecret.D.Bytes()
 	blindKey := etv.requestBlind.D.Bytes()
 
@@ -555,10 +555,10 @@ func generateIndexTestVector(t *testing.T) indexTestVector {
 		t.Fatal(err)
 	}
 
-	requestKeyEnc := elliptic.Marshal(curve, requestKey.X, requestKey.Y)
-	blindedRequestKeyEnc := elliptic.Marshal(curve, blindedRequestKey.X, blindedRequestKey.Y)
-	clientPublicKeyEnc := elliptic.Marshal(curve, clientSecretKey.X, clientSecretKey.Y)
-	indexKeyEnc := elliptic.Marshal(curve, indexKey.X, indexKey.Y)
+	requestKeyEnc := elliptic.MarshalCompressed(curve, requestKey.X, requestKey.Y)
+	blindedRequestKeyEnc := elliptic.MarshalCompressed(curve, blindedRequestKey.X, blindedRequestKey.Y)
+	clientPublicKeyEnc := elliptic.MarshalCompressed(curve, clientSecretKey.X, clientSecretKey.Y)
+	indexKeyEnc := elliptic.MarshalCompressed(curve, indexKey.X, indexKey.Y)
 
 	index, err := computeIndex(clientPublicKeyEnc, indexKeyEnc)
 	if err != nil {
@@ -592,10 +592,10 @@ func verifyIndexTestVector(t *testing.T, vector indexTestVector) {
 		t.Fatal(err)
 	}
 
-	requestKeyEnc := elliptic.Marshal(vector.curve, requestKey.X, requestKey.Y)
-	blindedRequestKeyEnc := elliptic.Marshal(vector.curve, blindedRequestKey.X, blindedRequestKey.Y)
-	clientPublicKeyEnc := elliptic.Marshal(vector.curve, vector.clientSecret.X, vector.clientSecret.Y)
-	indexKeyEnc := elliptic.Marshal(vector.curve, indexKey.X, indexKey.Y)
+	requestKeyEnc := elliptic.MarshalCompressed(vector.curve, requestKey.X, requestKey.Y)
+	blindedRequestKeyEnc := elliptic.MarshalCompressed(vector.curve, blindedRequestKey.X, blindedRequestKey.Y)
+	clientPublicKeyEnc := elliptic.MarshalCompressed(vector.curve, vector.clientSecret.X, vector.clientSecret.Y)
+	indexKeyEnc := elliptic.MarshalCompressed(vector.curve, indexKey.X, indexKey.Y)
 
 	index, err := computeIndex(clientPublicKeyEnc, indexKeyEnc)
 	if err != nil {

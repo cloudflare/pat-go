@@ -67,7 +67,7 @@ type RateLimitedTokenRequest struct {
 	raw                 []byte
 	tokenKeyID          uint8
 	blindedReq          []byte // 512 bytes
-	requestKey          []byte // 97 bytes
+	requestKey          []byte // 49 bytes
 	nameKeyID           []byte // 32 bytes
 	encryptedOriginName []byte // 16-bit length prefixed slice
 	signature           []byte // 96 bytes
@@ -118,7 +118,7 @@ func (r *RateLimitedTokenRequest) Unmarshal(data []byte) bool {
 		tokenType != RateLimitedTokenType ||
 		!s.ReadUint8(&r.tokenKeyID) ||
 		!s.ReadBytes(&r.blindedReq, 512) ||
-		!s.ReadBytes(&r.requestKey, 97) ||
+		!s.ReadBytes(&r.requestKey, 49) ||
 		!s.ReadBytes(&r.nameKeyID, 32) {
 		return false
 	}

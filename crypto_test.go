@@ -76,13 +76,13 @@ func (etv ecdsaBlindingTestVector) MarshalJSON() ([]byte, error) {
 	skSEnc := make([]byte, scalarLen)
 	etv.skS.D.FillBytes(skSEnc)
 
-	pkSEnc := elliptic.Marshal(etv.c, etv.skS.X, etv.skS.Y)
-	pkBEnc := elliptic.Marshal(etv.c, etv.skB.X, etv.skB.Y)
+	pkSEnc := elliptic.MarshalCompressed(etv.c, etv.skS.X, etv.skS.Y)
+	pkBEnc := elliptic.MarshalCompressed(etv.c, etv.skB.X, etv.skB.Y)
 	pkR, err := ecdsa.BlindPublicKey(etv.c, &etv.skS.PublicKey, etv.skB)
 	if err != nil {
 		return nil, err
 	}
-	pkREnc := elliptic.Marshal(etv.c, pkR.X, pkR.Y)
+	pkREnc := elliptic.MarshalCompressed(etv.c, pkR.X, pkR.Y)
 
 	skBEnc := make([]byte, scalarLen)
 	etv.skB.D.FillBytes(skBEnc)
@@ -132,17 +132,17 @@ func (etv *ecdsaBlindingTestVector) UnmarshalJSON(data []byte) error {
 	skS := new(big.Int).SetBytes(mustUnhex(nil, raw.PrivateKey))
 	skB := new(big.Int).SetBytes(mustUnhex(nil, raw.PrivateBlind))
 
-	pkSx, pkSy := elliptic.Unmarshal(curve, mustUnhex(nil, raw.PublicKey))
+	pkSx, pkSy := elliptic.UnmarshalCompressed(curve, mustUnhex(nil, raw.PublicKey))
 	pkS := ecdsa.PublicKey{
 		curve, pkSx, pkSy,
 	}
 
-	pkBx, pkBy := elliptic.Unmarshal(curve, mustUnhex(nil, raw.PublicBlind))
+	pkBx, pkBy := elliptic.UnmarshalCompressed(curve, mustUnhex(nil, raw.PublicBlind))
 	pkB := ecdsa.PublicKey{
 		curve, pkBx, pkBy,
 	}
 
-	pkRx, pkRy := elliptic.Unmarshal(curve, mustUnhex(nil, raw.BlindPublicKey))
+	pkRx, pkRy := elliptic.UnmarshalCompressed(curve, mustUnhex(nil, raw.BlindPublicKey))
 	pkR := ecdsa.PublicKey{
 		curve, pkRx, pkRy,
 	}
