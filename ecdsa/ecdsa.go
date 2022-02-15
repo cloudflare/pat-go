@@ -144,6 +144,17 @@ func randFieldElement(c elliptic.Curve, rand io.Reader) (k *big.Int, err error) 
 	return
 }
 
+func CreateKey(c elliptic.Curve, privateKeyBytes []byte) (*PrivateKey, error) {
+	k := new(big.Int).SetBytes(privateKeyBytes)
+
+	priv := new(PrivateKey)
+	priv.PublicKey.Curve = c
+	priv.D = k
+	priv.PublicKey.X, priv.PublicKey.Y = c.ScalarBaseMult(privateKeyBytes)
+
+	return priv, nil
+}
+
 // GenerateKey generates a public and private key pair.
 func GenerateKey(c elliptic.Curve, rand io.Reader) (*PrivateKey, error) {
 	k, err := randFieldElement(c, rand)
@@ -155,6 +166,7 @@ func GenerateKey(c elliptic.Curve, rand io.Reader) (*PrivateKey, error) {
 	priv.PublicKey.Curve = c
 	priv.D = k
 	priv.PublicKey.X, priv.PublicKey.Y = c.ScalarBaseMult(k.Bytes())
+
 	return priv, nil
 }
 

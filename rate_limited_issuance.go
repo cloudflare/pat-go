@@ -2,12 +2,14 @@ package pat
 
 import (
 	"crypto"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/sha512"
 	"fmt"
 	"io"
+	"math/big"
 
 	hpke "github.com/cisco/go-hpke"
 	"github.com/cloudflare/circl/blindsign"
@@ -15,12 +17,12 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/crypto/hkdf"
 
-	"github.com/cloudflare/pat-go/ed25519"
+	"github.com/cloudflare/pat-go/ecdsa"
 )
 
-func computeIndex(clientKey, indexKey ed25519.PublicKey) ([]byte, error) {
-	hkdf := hkdf.New(sha256.New, indexKey, clientKey, []byte("anon_issuer_origin_id"))
-	clientOriginIndex := make([]byte, sha256.Size)
+func computeIndex(clientKey, indexKey []byte) ([]byte, error) {
+	hkdf := hkdf.New(sha512.New384, indexKey, clientKey, []byte("anon_issuer_origin_id"))
+	clientOriginIndex := make([]byte, crypto.SHA384.Size())
 	if _, err := io.ReadFull(hkdf, clientOriginIndex); err != nil {
 		return nil, err
 	}
@@ -28,30 +30,43 @@ func computeIndex(clientKey, indexKey ed25519.PublicKey) ([]byte, error) {
 }
 
 // https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-attester-behavior-mapping-o
-func FinalizeIndex(clientKey, blind, blindedRequestKey []byte) ([]byte, error) {
-	indexKey, err := ed25519.UnblindPublicKey(blindedRequestKey, blind)
+func FinalizeIndex(clientKey, blindEnc, blindedRequestKeyEnc []byte) ([]byte, error) {
+	curve := elliptic.P384()
+	x, y := elliptic.UnmarshalCompressed(curve, blindedRequestKeyEnc)
+	blindedRequestKey := &ecdsa.PublicKey{
+		curve, x, y,
+	}
+
+	blindKey, err := ecdsa.CreateKey(curve, blindEnc)
 	if err != nil {
 		return nil, err
 	}
 
-	return computeIndex(clientKey, indexKey)
+	indexKey, err := ecdsa.UnblindPublicKey(curve, blindedRequestKey, blindKey)
+	if err != nil {
+		return nil, err
+	}
+
+	indexKeyEnc := elliptic.MarshalCompressed(curve, indexKey.X, indexKey.Y)
+
+	return computeIndex(clientKey, indexKeyEnc)
 }
 
 type RateLimitedClient struct {
-	secretKey ed25519.PrivateKey
-	publicKey ed25519.PublicKey
+	curve     elliptic.Curve
+	secretKey *ecdsa.PrivateKey
 }
 
 func CreateRateLimitedClientFromSecret(secret []byte) RateLimitedClient {
-	if len(secret) != 32 {
-		panic("Invalid secret length")
+	curve := elliptic.P384()
+	secretKey, err := ecdsa.CreateKey(curve, secret)
+	if err != nil {
+		panic(err)
 	}
-	secretKey := ed25519.NewKeyFromSeed(secret)
-	publicKey := secretKey.Public().(ed25519.PublicKey)
 
 	return RateLimitedClient{
+		curve:     elliptic.P384(),
 		secretKey: secretKey,
-		publicKey: publicKey,
 	}
 }
 
@@ -132,11 +147,17 @@ func (s RateLimitedTokenRequestState) FinalizeToken(blindSignature []byte) (Toke
 
 // https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-client-to-attester-request
 // https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-index-computation
-func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blind []byte, tokenKeyID []byte, tokenKey *rsa.PublicKey, originName string, nameKey PublicNameKey) (RateLimitedTokenRequestState, error) {
-	blindedPublicKey, err := ed25519.BlindPublicKey(c.publicKey, blind)
+func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []byte, tokenKeyID []byte, tokenKey *rsa.PublicKey, originName string, nameKey PublicNameKey) (RateLimitedTokenRequestState, error) {
+	blindKey, err := ecdsa.CreateKey(c.curve, blindKeyEnc)
 	if err != nil {
 		return RateLimitedTokenRequestState{}, err
 	}
+
+	blindedPublicKey, err := ecdsa.BlindPublicKey(c.curve, &c.secretKey.PublicKey, blindKey)
+	if err != nil {
+		return RateLimitedTokenRequestState{}, err
+	}
+	blindedPublicKeyEnc := elliptic.MarshalCompressed(c.curve, blindedPublicKey.X, blindedPublicKey.Y)
 
 	verifier := blindrsa.NewRSAVerifier(tokenKey, sha512.New384())
 
@@ -154,7 +175,7 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blind []byte, to
 		return RateLimitedTokenRequestState{}, err
 	}
 
-	nameKeyID, encryptedOriginName, err := encryptOriginName(nameKey, tokenKeyID[0], blindedMessage, blindedPublicKey, originName)
+	nameKeyID, encryptedOriginName, err := encryptOriginName(nameKey, tokenKeyID[0], blindedMessage, blindedPublicKeyEnc, originName)
 	if err != nil {
 		return RateLimitedTokenRequestState{}, err
 	}
@@ -163,17 +184,26 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blind []byte, to
 	b.AddUint16(RateLimitedTokenType)
 	b.AddUint8(tokenKeyID[0])
 	b.AddBytes(blindedMessage)
-	b.AddBytes(blindedPublicKey)
+	b.AddBytes(blindedPublicKeyEnc)
 	b.AddBytes(nameKeyID)
 	b.AddBytes(encryptedOriginName)
 	message := b.BytesOrPanic()
 
-	signature := ed25519.BlindKeySign(c.secretKey, message, blind)
+	r, s, err := ecdsa.BlindKeySign(rand.Reader, c.secretKey, blindKey, message)
+	if err != nil {
+		return RateLimitedTokenRequestState{}, err
+	}
+	scalarLen := (c.curve.Params().Params().BitSize + 7) / 8
+	rEnc := make([]byte, scalarLen)
+	sEnc := make([]byte, scalarLen)
+	r.FillBytes(rEnc)
+	s.FillBytes(sEnc)
+	signature := append(rEnc, sEnc...)
 
 	request := &RateLimitedTokenRequest{
 		tokenKeyID:          tokenKeyID[0],
 		blindedReq:          blindedMessage,
-		requestKey:          blindedPublicKey,
+		requestKey:          blindedPublicKeyEnc,
 		nameKeyID:           nameKeyID,
 		encryptedOriginName: encryptedOriginName,
 		signature:           signature,
@@ -181,7 +211,7 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blind []byte, to
 
 	requestState := RateLimitedTokenRequestState{
 		tokenInput:        tokenInput,
-		blindedRequestKey: blindedPublicKey,
+		blindedRequestKey: blindedPublicKeyEnc,
 		request:           request,
 		verifier:          verifierState,
 		verificationKey:   tokenKey,
@@ -191,8 +221,9 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blind []byte, to
 }
 
 type RateLimitedIssuer struct {
+	curve           elliptic.Curve
 	nameKey         PrivateNameKey
-	originIndexKeys map[string]ed25519.PrivateKey
+	originIndexKeys map[string]*ecdsa.PrivateKey
 	originTokenKeys map[string]*rsa.PrivateKey
 }
 
@@ -217,8 +248,9 @@ func NewRateLimitedIssuer() *RateLimitedIssuer {
 	}
 
 	return &RateLimitedIssuer{
+		curve:           elliptic.P384(),
 		nameKey:         nameKey,
-		originIndexKeys: make(map[string]ed25519.PrivateKey),
+		originIndexKeys: make(map[string]*ecdsa.PrivateKey),
 		originTokenKeys: make(map[string]*rsa.PrivateKey),
 	}
 }
@@ -228,7 +260,7 @@ func (i *RateLimitedIssuer) NameKey() PublicNameKey {
 }
 
 func (i *RateLimitedIssuer) AddOrigin(origin string) error {
-	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	privateKey, err := ecdsa.GenerateKey(i.curve, rand.Reader)
 	if err != nil {
 		return err
 	}
@@ -244,7 +276,7 @@ func (i *RateLimitedIssuer) AddOrigin(origin string) error {
 	return nil
 }
 
-func (i *RateLimitedIssuer) OriginIndexKey(origin string) ed25519.PrivateKey {
+func (i *RateLimitedIssuer) OriginIndexKey(origin string) *ecdsa.PrivateKey {
 	key, ok := i.originIndexKeys[origin]
 	if !ok {
 		return nil
@@ -322,6 +354,15 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 
 	// XXX(caw): factor out functionality above, and also check the keyID
 
+	x, y := elliptic.UnmarshalCompressed(i.curve, req.requestKey)
+	requestKey := &ecdsa.PublicKey{
+		i.curve, x, y,
+	}
+
+	scalarLen := (i.curve.Params().Params().BitSize + 7) / 8
+	r := new(big.Int).SetBytes(req.signature[:scalarLen])
+	s := new(big.Int).SetBytes(req.signature[scalarLen:])
+
 	// Verify the request signature
 	b := cryptobyte.NewBuilder(nil)
 	b.AddUint16(RateLimitedTokenType)
@@ -331,16 +372,17 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 	b.AddBytes(req.nameKeyID)
 	b.AddBytes(req.encryptedOriginName)
 	message := b.BytesOrPanic()
-	valid := ed25519.Verify(req.requestKey, message, req.signature)
+	valid := ecdsa.Verify(requestKey, message, r, s)
 	if !valid {
 		return nil, nil, fmt.Errorf("Invalid request signature")
 	}
 
 	// Blinded key
-	blindedRequestKey, err := ed25519.BlindPublicKey(req.requestKey, originIndexKey.Seed())
+	blindedRequestKey, err := ecdsa.BlindPublicKey(i.curve, requestKey, originIndexKey)
 	if err != nil {
 		return nil, nil, err
 	}
+	blindedRequestKeyEnc := elliptic.MarshalCompressed(i.curve, blindedRequestKey.X, blindedRequestKey.Y)
 
 	// Blinded signature
 	signer := blindrsa.NewRSASigner(originTokenKey)
@@ -349,7 +391,7 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 		return nil, nil, err
 	}
 
-	return blindSignature, blindedRequestKey, nil
+	return blindSignature, blindedRequestKeyEnc, nil
 }
 
 func (i RateLimitedIssuer) EvaluateWithoutCheck(req *RateLimitedTokenRequest) ([]byte, []byte, error) {
@@ -369,10 +411,15 @@ func (i RateLimitedIssuer) EvaluateWithoutCheck(req *RateLimitedTokenRequest) ([
 	}
 
 	// Blinded key
-	blindedRequestKey, err := ed25519.BlindPublicKey(req.requestKey, originIndexKey.Seed())
+	x, y := elliptic.UnmarshalCompressed(i.curve, req.requestKey)
+	requestKey := &ecdsa.PublicKey{
+		i.curve, x, y,
+	}
+	blindedRequestKey, err := ecdsa.BlindPublicKey(i.curve, requestKey, originIndexKey)
 	if err != nil {
 		return nil, nil, err
 	}
+	blindedRequestKeyEnc := elliptic.MarshalCompressed(i.curve, blindedRequestKey.X, blindedRequestKey.Y)
 
 	// Blinded signature
 	signer := blindrsa.NewRSASigner(originTokenKey)
@@ -381,5 +428,5 @@ func (i RateLimitedIssuer) EvaluateWithoutCheck(req *RateLimitedTokenRequest) ([
 		return nil, nil, err
 	}
 
-	return blindSignature, blindedRequestKey, nil
+	return blindSignature, blindedRequestKeyEnc, nil
 }

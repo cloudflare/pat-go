@@ -1,10 +1,11 @@
 package pat
 
 import (
+	"crypto/elliptic"
 	"crypto/rand"
 	"testing"
 
-	"github.com/cloudflare/pat-go/ed25519"
+	"github.com/cloudflare/pat-go/ecdsa"
 )
 
 func TestRequestMarshal(t *testing.T) {
@@ -12,29 +13,22 @@ func TestRequestMarshal(t *testing.T) {
 	testOrigin := "origin.example"
 	issuer.AddOrigin(testOrigin)
 
-	publicKey, secretKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Error(err)
-	}
-
-	client := RateLimitedClient{
-		secretKey: secretKey,
-		publicKey: publicKey,
-	}
+	curve := elliptic.P384()
+	secretKey, err := ecdsa.GenerateKey(curve, rand.Reader)
+	blindKey, err := ecdsa.GenerateKey(curve, rand.Reader)
+	client := CreateRateLimitedClientFromSecret(secretKey.D.Bytes())
 
 	challenge := make([]byte, 32)
 	rand.Reader.Read(challenge)
-
-	blind := make([]byte, 32)
-	rand.Reader.Read(blind)
 
 	nonce := make([]byte, 32)
 	rand.Reader.Read(nonce)
 
 	tokenKeyID := issuer.OriginTokenKeyID(testOrigin)
 	tokenPublicKey := issuer.OriginTokenKey(testOrigin)
+	blindKeyEnc := blindKey.D.Bytes()
 
-	requestState, err := client.CreateTokenRequest(challenge, nonce, blind, tokenKeyID, tokenPublicKey, testOrigin, issuer.NameKey())
+	requestState, err := client.CreateTokenRequest(challenge, nonce, blindKeyEnc, tokenKeyID, tokenPublicKey, testOrigin, issuer.NameKey())
 	if err != nil {
 		t.Error(err)
 	}
