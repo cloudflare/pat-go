@@ -189,7 +189,11 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 	b.AddBytes(encryptedOriginName)
 	message := b.BytesOrPanic()
 
-	r, s, err := ecdsa.BlindKeySign(rand.Reader, c.secretKey, blindKey, message)
+	hash := sha512.New384()
+	hash.Write(message)
+	digest := hash.Sum(nil)
+
+	r, s, err := ecdsa.BlindKeySign(rand.Reader, c.secretKey, blindKey, digest)
 	if err != nil {
 		return RateLimitedTokenRequestState{}, err
 	}
@@ -353,7 +357,6 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 	}
 
 	// XXX(caw): factor out functionality above, and also check the keyID
-
 	x, y := elliptic.UnmarshalCompressed(i.curve, req.requestKey)
 	requestKey := &ecdsa.PublicKey{
 		i.curve, x, y,
@@ -372,7 +375,12 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 	b.AddBytes(req.nameKeyID)
 	b.AddBytes(req.encryptedOriginName)
 	message := b.BytesOrPanic()
-	valid := ecdsa.Verify(requestKey, message, r, s)
+
+	hash := sha512.New384()
+	hash.Write(message)
+	digest := hash.Sum(nil)
+
+	valid := ecdsa.Verify(requestKey, digest, r, s)
 	if !valid {
 		return nil, nil, fmt.Errorf("Invalid request signature")
 	}
