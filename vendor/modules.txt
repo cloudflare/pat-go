@@ -1,0 +1,31 @@
+# git.schwanenlied.me/yawning/x448.git v0.0.0-20170617130356-01b048fb03d6
+git.schwanenlied.me/yawning/x448.git
+# github.com/cisco/go-hpke v0.0.0-20210524174249-dd22b38cf960
+## explicit
+github.com/cisco/go-hpke
+# github.com/cisco/go-tls-syntax v0.0.0-20200617162716-46b0cfb76b9b
+github.com/cisco/go-tls-syntax
+# github.com/cloudflare/circl v1.1.1-0.20211221174948-2d22325a4fed
+## explicit
+github.com/cloudflare/circl/blindsign
+github.com/cloudflare/circl/blindsign/blindrsa
+github.com/cloudflare/circl/dh/sidh
+github.com/cloudflare/circl/dh/sidh/internal/common
+github.com/cloudflare/circl/dh/sidh/internal/p434
+github.com/cloudflare/circl/dh/sidh/internal/p503
+github.com/cloudflare/circl/dh/sidh/internal/p751
+github.com/cloudflare/circl/internal/sha3
+# golang.org/x/crypto v0.0.0-20211202192323-5770296d904e
+## explicit
+golang.org/x/crypto/chacha20
+golang.org/x/crypto/chacha20poly1305
+golang.org/x/crypto/cryptobyte
+golang.org/x/crypto/cryptobyte/asn1
+golang.org/x/crypto/curve25519
+golang.org/x/crypto/curve25519/internal/field
+golang.org/x/crypto/hkdf
+golang.org/x/crypto/internal/poly1305
+golang.org/x/crypto/internal/subtle
+# golang.org/x/sys v0.0.0-20211205182925-97ca703d548d
+## explicit
+golang.org/x/sys/cpu

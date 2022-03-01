@@ -93,18 +93,45 @@ func (c BasicPublicClient) CreateTokenRequest(challenge, nonce []byte, tokenKeyI
 	return requestState, nil
 }
 
+func (c BasicPublicClient) CreateTokenRequestWithBlind(challenge, nonce []byte, tokenKeyID []byte, tokenKey *rsa.PublicKey, blind, salt []byte) (BasicPublicTokenRequestState, error) {
+	verifier := blindrsa.NewRSAVerifier(tokenKey, sha512.New384())
+
+	context := sha256.Sum256(challenge)
+	token := Token{
+		TokenType:     BasicPublicTokenType,
+		Nonce:         nonce,
+		Context:       context[:],
+		KeyID:         tokenKeyID,
+		Authenticator: nil, // No signature computed yet
+	}
+	tokenInput := token.AuthenticatorInput()
+	blindedMessage, verifierState, err := verifier.FixedBlind(tokenInput, blind, salt)
+	if err != nil {
+		return BasicPublicTokenRequestState{}, err
+	}
+
+	request := &BasicPublicTokenRequest{
+		tokenKeyID: tokenKeyID[0],
+		blindedReq: blindedMessage,
+	}
+
+	requestState := BasicPublicTokenRequestState{
+		tokenInput:      tokenInput,
+		request:         request,
+		verifier:        verifierState,
+		verificationKey: tokenKey,
+	}
+
+	return requestState, nil
+}
+
 type BasicPublicIssuer struct {
 	tokenKey *rsa.PrivateKey
 }
 
-func NewBasicPublicIssuer() *BasicPublicIssuer {
-	tokenKey, err := rsa.GenerateKey(rand.Reader, 4096)
-	if err != nil {
-		return nil
-	}
-
+func NewBasicPublicIssuer(key *rsa.PrivateKey) *BasicPublicIssuer {
 	return &BasicPublicIssuer{
-		tokenKey: tokenKey,
+		tokenKey: key,
 	}
 }
 

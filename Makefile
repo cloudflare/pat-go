@@ -6,3 +6,4 @@ vectors: test
 	ECDSA_BLINDING_TEST_VECTORS_OUT=ecdsa-blinding-test-vectors.json go test -v -run TestVectorGenerateECDSABlinding
 	PAT_INDEX_TEST_VECTORS_OUT=index-test-vectors.json go test -v -run TestVectorGenerateIndex
 	PAT_ORIGIN_ENCRYPTION_TEST_VECTORS_OUT=origin-encryption-test-vectors.json go test -v -run TestVectorGenerateOriginEncryption
+	BASIC_ISSUANCE_TEST_VECTORS_OUT=basic-issuance-test-vectors.json go test -v -run TestVectorGenerateBasicIssuance
