@@ -6,6 +6,12 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 )
 
+var (
+	BasicPrivateTokenType = uint16(0x0001)
+	BasicPublicTokenType  = uint16(0x0002)
+	RateLimitedTokenType  = uint16(0x0003)
+)
+
 // struct {
 //     uint16_t token_type;
 //     uint8_t nonce[32];

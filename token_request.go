@@ -6,14 +6,55 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 )
 
-var (
-	BasicPublicTokenType = uint16(0x0002)
-	RateLimitedTokenType = uint16(0x0003)
-)
-
 type TokenRequest interface {
 	Marshal() []byte
 	Unmarshal(data []byte) bool
+}
+
+type BasicPrivateTokenRequest struct {
+	raw        []byte
+	tokenKeyID uint8
+	blindedReq []byte // 48 bytes
+}
+
+func (r BasicPrivateTokenRequest) Type() uint16 {
+	return BasicPrivateTokenType
+}
+
+func (r BasicPrivateTokenRequest) Equal(r2 BasicPrivateTokenRequest) bool {
+	if r.tokenKeyID == r2.tokenKeyID &&
+		bytes.Equal(r.blindedReq, r2.blindedReq) {
+		return true
+	}
+	return false
+}
+
+func (r *BasicPrivateTokenRequest) Marshal() []byte {
+	if r.raw != nil {
+		return r.raw
+	}
+
+	b := cryptobyte.NewBuilder(nil)
+	b.AddUint16(BasicPrivateTokenType)
+	b.AddUint8(r.tokenKeyID)
+	b.AddBytes(r.blindedReq)
+
+	r.raw = b.BytesOrPanic()
+	return r.raw
+}
+
+func (r *BasicPrivateTokenRequest) Unmarshal(data []byte) bool {
+	s := cryptobyte.String(data)
+
+	var tokenType uint16
+	if !s.ReadUint16(&tokenType) ||
+		tokenType != BasicPrivateTokenType ||
+		!s.ReadUint8(&r.tokenKeyID) ||
+		!s.ReadBytes(&r.blindedReq, 48) {
+		return false
+	}
+
+	return true
 }
 
 type BasicPublicTokenRequest struct {

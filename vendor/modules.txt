@@ -1,12 +1,30 @@
 # git.schwanenlied.me/yawning/x448.git v0.0.0-20170617130356-01b048fb03d6
 git.schwanenlied.me/yawning/x448.git
+# github.com/alxdavids/voprf-poc/go v0.0.0-20200824091139-5bc4ba3fb70b
+github.com/alxdavids/voprf-poc/go/oerr
+github.com/alxdavids/voprf-poc/go/oprf
+github.com/alxdavids/voprf-poc/go/oprf/groups
+github.com/alxdavids/voprf-poc/go/oprf/groups/dleq
+github.com/alxdavids/voprf-poc/go/oprf/groups/ecgroup
+github.com/alxdavids/voprf-poc/go/oprf/utils
+github.com/alxdavids/voprf-poc/go/oprf/utils/constants
+# github.com/armfazh/h2c-go-ref v0.0.0-20200603094401-c69caec07161
+github.com/armfazh/h2c-go-ref
+github.com/armfazh/h2c-go-ref/curve
+github.com/armfazh/h2c-go-ref/field
+github.com/armfazh/h2c-go-ref/mapping
+github.com/armfazh/h2c-go-ref/xof
+# github.com/armfazh/tozan-ecc v0.1.1
+github.com/armfazh/tozan-ecc/curve
+github.com/armfazh/tozan-ecc/field
+# github.com/bwesterb/go-ristretto v1.2.1
+github.com/bwesterb/go-ristretto
+github.com/bwesterb/go-ristretto/edwards25519
 # github.com/cisco/go-hpke v0.0.0-20210524174249-dd22b38cf960
-## explicit
 github.com/cisco/go-hpke
 # github.com/cisco/go-tls-syntax v0.0.0-20200617162716-46b0cfb76b9b
 github.com/cisco/go-tls-syntax
-# github.com/cloudflare/circl v1.1.1-0.20211221174948-2d22325a4fed
-## explicit
+# github.com/cloudflare/circl v1.1.1-0.20220303234816-b38981cf48e4
 github.com/cloudflare/circl/blindsign
 github.com/cloudflare/circl/blindsign/blindrsa
 github.com/cloudflare/circl/dh/sidh
@@ -14,9 +32,20 @@ github.com/cloudflare/circl/dh/sidh/internal/common
 github.com/cloudflare/circl/dh/sidh/internal/p434
 github.com/cloudflare/circl/dh/sidh/internal/p503
 github.com/cloudflare/circl/dh/sidh/internal/p751
+github.com/cloudflare/circl/ecc/p384
+github.com/cloudflare/circl/expander
+github.com/cloudflare/circl/group
+github.com/cloudflare/circl/group/dleq
+github.com/cloudflare/circl/internal/conv
 github.com/cloudflare/circl/internal/sha3
+github.com/cloudflare/circl/math
+github.com/cloudflare/circl/oprf
+github.com/cloudflare/circl/xof
+# github.com/otrv4/ed448 v0.0.0-20200313043504-efc4accd8117
+github.com/otrv4/ed448
 # golang.org/x/crypto v0.0.0-20211202192323-5770296d904e
-## explicit
+golang.org/x/crypto/blake2b
+golang.org/x/crypto/blake2s
 golang.org/x/crypto/chacha20
 golang.org/x/crypto/chacha20poly1305
 golang.org/x/crypto/cryptobyte
@@ -26,6 +55,6 @@ golang.org/x/crypto/curve25519/internal/field
 golang.org/x/crypto/hkdf
 golang.org/x/crypto/internal/poly1305
 golang.org/x/crypto/internal/subtle
+golang.org/x/crypto/sha3
 # golang.org/x/sys v0.0.0-20211205182925-97ca703d548d
-## explicit
 golang.org/x/sys/cpu
