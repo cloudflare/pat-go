@@ -4,7 +4,7 @@ go 1.15
 
 require (
 	github.com/cisco/go-hpke v0.0.0-20210524174249-dd22b38cf960
-	github.com/cloudflare/circl v1.1.1-0.20220303234816-b38981cf48e4
+	github.com/cloudflare/circl v1.1.1-0.20220304233551-65bed837337c
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/kr/pretty v0.1.0 // indirect
 	golang.org/x/crypto v0.0.0-20211202192323-5770296d904e

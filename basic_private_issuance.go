@@ -1,7 +1,9 @@
 package pat
 
 import (
+	"bytes"
 	"crypto/sha256"
+	"fmt"
 
 	"github.com/cloudflare/circl/group"
 	"github.com/cloudflare/circl/group/dleq"
@@ -54,7 +56,7 @@ func (s BasicPrivateTokenRequestState) FinalizeToken(tokenResponseEnc []byte) (T
 	}
 
 	tokenData := append(s.tokenInput, outputs[0]...)
-	token, err := UnmarshalToken(tokenData)
+	token, err := UnmarshalPrivateToken(tokenData)
 	if err != nil {
 		return Token{}, err
 	}
@@ -100,37 +102,49 @@ func (c BasicPrivateClient) CreateTokenRequest(challenge, nonce []byte, tokenKey
 	return requestState, nil
 }
 
-// func (c BasicPrivateClient) CreateTokenRequestWithBlind(challenge, nonce []byte, tokenKeyID []byte, tokenKey *rsa.PublicKey, blind []byte) (BasicPrivateTokenRequestState, error) {
-// 	verifier := blindrsa.NewRSAVerifier(tokenKey, sha512.New384())
+func (c BasicPrivateClient) CreateTokenRequestWithBlind(challenge, nonce []byte, tokenKeyID []byte, verificationKey *oprf.PublicKey, blindEnc []byte) (BasicPrivateTokenRequestState, error) {
+	client := oprf.NewPartialObliviousClient(oprf.SuiteP384, verificationKey)
 
-// 	context := sha256.Sum256(challenge)
-// 	token := Token{
-// 		TokenType:     BasicPrivateTokenType,
-// 		Nonce:         nonce,
-// 		Context:       context[:],
-// 		KeyID:         tokenKeyID,
-// 		Authenticator: nil, // No signature computed yet
-// 	}
-// 	tokenInput := token.AuthenticatorInput()
-// 	blindedMessage, verifierState, err := verifier.FixedBlind(tokenInput, blind, salt)
-// 	if err != nil {
-// 		return BasicPrivateTokenRequestState{}, err
-// 	}
+	context := sha256.Sum256(challenge)
+	token := Token{
+		TokenType:     BasicPrivateTokenType,
+		Nonce:         nonce,
+		Context:       context[:],
+		KeyID:         tokenKeyID,
+		Authenticator: nil, // No OPRF output computed yet
+	}
+	tokenInput := token.AuthenticatorInput()
 
-// 	request := &BasicPrivateTokenRequest{
-// 		tokenKeyID: tokenKeyID[0],
-// 		blindedReq: blindedMessage,
-// 	}
+	blind := group.P384.NewScalar()
+	err := blind.UnmarshalBinary(blindEnc)
+	if err != nil {
+		return BasicPrivateTokenRequestState{}, err
+	}
 
-// 	requestState := BasicPrivateTokenRequestState{
-// 		tokenInput:      tokenInput,
-// 		request:         request,
-// 		verifier:        verifierState,
-// 		verificationKey: tokenKey,
-// 	}
+	finalizeData, evalRequest, err := client.DeterministicBlind([][]byte{tokenInput}, []oprf.Blind{blind})
+	if err != nil {
+		return BasicPrivateTokenRequestState{}, err
+	}
 
-// 	return requestState, nil
-// }
+	encRequest, err := evalRequest.Elements[0].MarshalBinaryCompress()
+	if err != nil {
+		return BasicPrivateTokenRequestState{}, err
+	}
+	request := &BasicPrivateTokenRequest{
+		tokenKeyID: tokenKeyID[0],
+		blindedReq: encRequest,
+	}
+
+	requestState := BasicPrivateTokenRequestState{
+		tokenInput:      tokenInput,
+		request:         request,
+		client:          client,
+		verifier:        finalizeData,
+		verificationKey: verificationKey,
+	}
+
+	return requestState, nil
+}
 
 type BasicPrivateIssuer struct {
 	tokenKey *oprf.PrivateKey
@@ -186,4 +200,19 @@ func (i BasicPrivateIssuer) Evaluate(req *BasicPrivateTokenRequest) ([]byte, err
 	tokenResponse := append(encEvaluatedElement, encProof...)
 
 	return tokenResponse, nil
+}
+
+func (i BasicPrivateIssuer) Verify(token Token) error {
+	server := oprf.NewPartialObliviousServer(oprf.SuiteP384, i.tokenKey)
+
+	tokenInput := token.AuthenticatorInput()
+	output, err := server.FullEvaluate(tokenInput, []byte(sharedInfo))
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(output, token.Authenticator) {
+		return fmt.Errorf("Token authentication mismatch")
+	}
+
+	return nil
 }

@@ -61,3 +61,18 @@ func UnmarshalToken(data []byte) (Token, error) {
 
 	return token, nil
 }
+
+func UnmarshalPrivateToken(data []byte) (Token, error) {
+	s := cryptobyte.String(data)
+
+	token := Token{}
+	if !s.ReadUint16(&token.TokenType) ||
+		!s.ReadBytes(&token.Nonce, 32) ||
+		!s.ReadBytes(&token.Context, 32) ||
+		!s.ReadBytes(&token.KeyID, 32) ||
+		!s.ReadBytes(&token.Authenticator, 48) {
+		return Token{}, fmt.Errorf("Invalid Token encoding")
+	}
+
+	return token, nil
+}

@@ -21,10 +21,10 @@ type PartialObliviousServer struct{ server }
 
 func (s server) PublicKey() *PublicKey { return s.privateKey.Public() }
 
-func (s server) evaluate(elements []Blinded, secret blind) []Evaluated {
+func (s server) evaluate(elements []Blinded, secret Blind) []Evaluated {
 	evaluations := make([]Evaluated, len(elements))
 	for i := range elements {
-		evaluations[i] = s.params.g.NewElement().Mul(elements[i], secret)
+		evaluations[i] = s.params.group.NewElement().Mul(elements[i], secret)
 	}
 
 	return evaluations
@@ -41,7 +41,7 @@ func (s VerifiableServer) Evaluate(req *EvaluationRequest) (*Evaluation, error) 
 
 	proof, err := dleq.Prover{Params: s.getDLEQParams()}.ProveBatch(
 		s.privateKey.k,
-		s.params.g.Generator(),
+		s.params.group.Generator(),
 		s.PublicKey().e,
 		req.Elements,
 		evaluations,
@@ -64,8 +64,8 @@ func (s PartialObliviousServer) Evaluate(req *EvaluationRequest, info []byte) (*
 
 	proof, err := dleq.Prover{Params: s.getDLEQParams()}.ProveBatch(
 		keyProof,
-		s.params.g.Generator(),
-		s.params.g.NewElement().MulGen(keyProof),
+		s.params.group.Generator(),
+		s.params.group.NewElement().MulGen(keyProof),
 		evaluations,
 		req.Elements,
 		rand.Reader,
@@ -82,12 +82,12 @@ func (s server) secretFromInfo(info []byte) (t, tInv group.Scalar, err error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	t = s.params.g.NewScalar().Add(m, s.privateKey.k)
+	t = s.params.group.NewScalar().Add(m, s.privateKey.k)
 
-	if zero := s.params.g.NewScalar(); t.IsEqual(zero) {
+	if zero := s.params.group.NewScalar(); t.IsEqual(zero) {
 		return nil, nil, ErrInverseZero
 	}
-	tInv = s.params.g.NewScalar().Inv(t)
+	tInv = s.params.group.NewScalar().Inv(t)
 
 	return t, tInv, nil
 }
@@ -102,14 +102,14 @@ func (s server) fullEvaluate(input, info []byte) ([]byte, error) {
 		}
 	}
 
-	element := s.params.g.HashToElement(input, s.params.getDST(hashToGroupDST))
-	evaluation := s.params.g.NewElement().Mul(element, evalSecret)
+	element := s.params.group.HashToElement(input, s.params.getDST(hashToGroupDST))
+	evaluation := s.params.group.NewElement().Mul(element, evalSecret)
 	serEval, err := evaluation.MarshalBinaryCompress()
 	if err != nil {
 		return nil, err
 	}
 
-	return s.finalizeHash(s.params.h.New(), input, info, serEval), nil
+	return s.finalizeHash(s.params.hash.New(), input, info, serEval), nil
 }
 
 func (s Server) FullEvaluate(input []byte) (output []byte, err error) {
