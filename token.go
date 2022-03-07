@@ -6,6 +6,12 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 )
 
+var (
+	BasicPrivateTokenType = uint16(0x0001)
+	BasicPublicTokenType  = uint16(0x0002)
+	RateLimitedTokenType  = uint16(0x0003)
+)
+
 // struct {
 //     uint16_t token_type;
 //     uint8_t nonce[32];
@@ -50,6 +56,21 @@ func UnmarshalToken(data []byte) (Token, error) {
 		!s.ReadBytes(&token.Context, 32) ||
 		!s.ReadBytes(&token.KeyID, 32) ||
 		!s.ReadBytes(&token.Authenticator, 512) {
+		return Token{}, fmt.Errorf("Invalid Token encoding")
+	}
+
+	return token, nil
+}
+
+func UnmarshalPrivateToken(data []byte) (Token, error) {
+	s := cryptobyte.String(data)
+
+	token := Token{}
+	if !s.ReadUint16(&token.TokenType) ||
+		!s.ReadBytes(&token.Nonce, 32) ||
+		!s.ReadBytes(&token.Context, 32) ||
+		!s.ReadBytes(&token.KeyID, 32) ||
+		!s.ReadBytes(&token.Authenticator, 48) {
 		return Token{}, fmt.Errorf("Invalid Token encoding")
 	}
 
