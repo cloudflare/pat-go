@@ -33,9 +33,12 @@ import (
 	"crypto/elliptic"
 	"crypto/sha512"
 	"errors"
+	"fmt"
 	"io"
 	"math/big"
 
+	"github.com/cloudflare/circl/expander"
+	"github.com/cloudflare/circl/group"
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/crypto/cryptobyte/asn1"
 )
@@ -170,9 +173,38 @@ func GenerateKey(c elliptic.Curve, rand io.Reader) (*PrivateKey, error) {
 	return priv, nil
 }
 
+func hashBlind(c elliptic.Curve, sk *PrivateKey) (*big.Int, error) {
+	var h crypto.Hash
+	var L uint
+	switch c.Params().Name {
+	case "P-224":
+		h = crypto.SHA256
+		L = 32
+	case "P-256":
+		h = crypto.SHA256
+		L = 48
+	case "P-384":
+		h = crypto.SHA384
+		L = 72
+	case "P-521":
+		h = crypto.SHA512
+		L = 98
+	default:
+		return nil, fmt.Errorf("Unsupported curve")
+	}
+	xmd := expander.NewExpanderMD(h, []byte("ECDSA Key Blind"))
+	var u [1]big.Int
+	group.HashToField(u[:], sk.D.Bytes(), xmd, c.Params().N, L)
+	return new(big.Int).Set(&u[0]), nil
+}
+
 // BlindPublicKey blinds a public key using a private key pair.
 func BlindPublicKey(c elliptic.Curve, pk *PublicKey, sk *PrivateKey) (*PublicKey, error) {
-	X, Y := c.ScalarMult(pk.X, pk.Y, sk.D.Bytes())
+	skBlind, err := hashBlind(c, sk)
+	if err != nil {
+		return nil, err
+	}
+	X, Y := c.ScalarMult(pk.X, pk.Y, skBlind.Bytes())
 	return &PublicKey{
 		c, X, Y,
 	}, nil
@@ -180,7 +212,11 @@ func BlindPublicKey(c elliptic.Curve, pk *PublicKey, sk *PrivateKey) (*PublicKey
 
 // UnblindPublicKey unblinds a public key using a private key pair.
 func UnblindPublicKey(c elliptic.Curve, pk *PublicKey, sk *PrivateKey) (*PublicKey, error) {
-	kInv := new(big.Int).ModInverse(sk.D, c.Params().N)
+	skBlind, err := hashBlind(c, sk)
+	if err != nil {
+		return nil, err
+	}
+	kInv := new(big.Int).ModInverse(skBlind, c.Params().N)
 	X, Y := c.ScalarMult(pk.X, pk.Y, kInv.Bytes())
 	return &PublicKey{
 		c, X, Y,
@@ -193,8 +229,12 @@ func BlindKeySign(rand io.Reader, skS *PrivateKey, skB *PrivateKey, hash []byte)
 	if err != nil {
 		return nil, nil, err
 	}
+	skBlind, err := hashBlind(skS.Curve, skB)
+	if err != nil {
+		return nil, nil, err
+	}
 
-	Db := new(big.Int).Mul(skS.D, skB.D)
+	Db := new(big.Int).Mul(skS.D, skBlind)
 	Db.Mod(Db, skS.Curve.Params().N)
 	skR := &PrivateKey{
 		*pkB,
