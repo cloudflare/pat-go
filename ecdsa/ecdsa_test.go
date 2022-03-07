@@ -86,8 +86,8 @@ func testRelatedKeySignOracleAttack(t *testing.T, c elliptic.Curve) {
 	sForge := new(big.Int).Mul(s, aInv)
 	sForge.Mod(sForge, c.Params().N)
 
-	if !Verify(&skS.PublicKey, m0, rForge, sForge) {
-		t.Errorf("Verify failed")
+	if Verify(&skS.PublicKey, m0, rForge, sForge) {
+		t.Errorf("Verify succeeded when it should have failed")
 	}
 }
 
