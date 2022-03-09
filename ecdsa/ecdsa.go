@@ -194,7 +194,9 @@ func hashBlind(c elliptic.Curve, sk *PrivateKey) (*big.Int, error) {
 	}
 	xmd := expander.NewExpanderMD(h, []byte("ECDSA Key Blind"))
 	var u [1]big.Int
-	group.HashToField(u[:], sk.D.Bytes(), xmd, c.Params().N, L)
+	scalarBytes := make([]byte, (sk.D.BitLen()+7)>>3)
+	sk.D.FillBytes(scalarBytes)
+	group.HashToField(u[:], scalarBytes, xmd, c.Params().N, L)
 	return new(big.Int).Set(&u[0]), nil
 }
 

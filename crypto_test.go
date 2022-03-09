@@ -123,10 +123,10 @@ func (etv *ecdsaBlindingTestVector) UnmarshalJSON(data []byte) error {
 
 	hashName := raw.Hash
 	var hash crypto.Hash
-	if hashName == crypto.SHA256.String() {
-		hash = crypto.SHA256
+	if hashName == crypto.SHA384.String() {
+		hash = crypto.SHA384
 	} else {
-		return fmt.Errorf("Unsupported hash algorithm: %s %s\n", hashName, crypto.SHA256.String())
+		return fmt.Errorf("Unsupported hash algorithm: %s %s\n", hashName, crypto.SHA384.String())
 	}
 
 	skS := new(big.Int).SetBytes(mustUnhex(nil, raw.PrivateKey))
@@ -231,7 +231,7 @@ func verifyECDSABlindingTestVectors(t *testing.T, encoded []byte) {
 
 func TestVectorGenerateECDSABlinding(t *testing.T) {
 	vectors := make([]ecdsaBlindingTestVector, 0)
-	vectors = append(vectors, generateECDSABlindingTestVector(t, elliptic.P384(), crypto.SHA256))
+	vectors = append(vectors, generateECDSABlindingTestVector(t, elliptic.P384(), crypto.SHA384))
 
 	// Encode the test vectors
 	encoded, err := json.Marshal(vectors)
