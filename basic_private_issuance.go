@@ -10,10 +10,6 @@ import (
 	"github.com/cloudflare/circl/oprf"
 )
 
-const (
-	sharedInfo = "Privacy Pass"
-)
-
 type BasicPrivateClient struct {
 }
 
@@ -24,7 +20,7 @@ func NewBasicPrivateClient() BasicPrivateClient {
 type BasicPrivateTokenRequestState struct {
 	tokenInput      []byte
 	request         *BasicPrivateTokenRequest
-	client          oprf.PartialObliviousClient
+	client          oprf.VerifiableClient
 	verificationKey *oprf.PublicKey
 	verifier        *oprf.FinalizeData
 }
@@ -50,7 +46,7 @@ func (s BasicPrivateTokenRequestState) FinalizeToken(tokenResponseEnc []byte) (T
 		Elements: []oprf.Evaluated{evaluatedElement},
 		Proof:    proof,
 	}
-	outputs, err := s.client.Finalize(s.verifier, evaluation, []byte(sharedInfo))
+	outputs, err := s.client.Finalize(s.verifier, evaluation)
 	if err != nil {
 		return Token{}, err
 	}
@@ -66,7 +62,7 @@ func (s BasicPrivateTokenRequestState) FinalizeToken(tokenResponseEnc []byte) (T
 
 // https://ietf-wg-privacypass.github.io/base-drafts/caw/pp-issuance/draft-ietf-privacypass-protocol.html#name-issuance-protocol-for-publi
 func (c BasicPrivateClient) CreateTokenRequest(challenge, nonce []byte, tokenKeyID []byte, verificationKey *oprf.PublicKey) (BasicPrivateTokenRequestState, error) {
-	client := oprf.NewPartialObliviousClient(oprf.SuiteP384, verificationKey)
+	client := oprf.NewVerifiableClient(oprf.SuiteP384, verificationKey)
 
 	context := sha256.Sum256(challenge)
 	token := Token{
@@ -103,7 +99,7 @@ func (c BasicPrivateClient) CreateTokenRequest(challenge, nonce []byte, tokenKey
 }
 
 func (c BasicPrivateClient) CreateTokenRequestWithBlind(challenge, nonce []byte, tokenKeyID []byte, verificationKey *oprf.PublicKey, blindEnc []byte) (BasicPrivateTokenRequestState, error) {
-	client := oprf.NewPartialObliviousClient(oprf.SuiteP384, verificationKey)
+	client := oprf.NewVerifiableClient(oprf.SuiteP384, verificationKey)
 
 	context := sha256.Sum256(challenge)
 	token := Token{
@@ -170,7 +166,7 @@ func (i *BasicPrivateIssuer) TokenKeyID() []byte {
 }
 
 func (i BasicPrivateIssuer) Evaluate(req *BasicPrivateTokenRequest) ([]byte, error) {
-	server := oprf.NewPartialObliviousServer(oprf.SuiteP384, i.tokenKey)
+	server := oprf.NewVerifiableServer(oprf.SuiteP384, i.tokenKey)
 
 	e := group.P384.NewElement()
 	err := e.UnmarshalBinary(req.blindedReq)
@@ -182,7 +178,7 @@ func (i BasicPrivateIssuer) Evaluate(req *BasicPrivateTokenRequest) ([]byte, err
 	}
 
 	// Evaluate the input
-	evaluation, err := server.Evaluate(evalRequest, []byte(sharedInfo))
+	evaluation, err := server.Evaluate(evalRequest)
 	if err != nil {
 		return nil, err
 	}
@@ -203,10 +199,10 @@ func (i BasicPrivateIssuer) Evaluate(req *BasicPrivateTokenRequest) ([]byte, err
 }
 
 func (i BasicPrivateIssuer) Verify(token Token) error {
-	server := oprf.NewPartialObliviousServer(oprf.SuiteP384, i.tokenKey)
+	server := oprf.NewVerifiableServer(oprf.SuiteP384, i.tokenKey)
 
 	tokenInput := token.AuthenticatorInput()
-	output, err := server.FullEvaluate(tokenInput, []byte(sharedInfo))
+	output, err := server.FullEvaluate(tokenInput)
 	if err != nil {
 		return err
 	}
