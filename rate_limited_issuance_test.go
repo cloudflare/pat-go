@@ -79,11 +79,11 @@ b5tL+JXMipkSpSlmUFCGysfz6V++3fT1kp+YmAgqSwv9WxO/1aC6RcLr9Xo8
 -----END RSA PRIVATE KEY-----`
 
 const (
-	outputIndexTestVectorEnvironmentKey = "PAT_INDEX_TEST_VECTORS_OUT"
-	inputIndexTestVectorEnvironmentKey  = "PAT_INDEX_TEST_VECTORS_IN"
+	outputAnonOriginIDTestVectorEnvironmentKey = "RATE_LIMITED_ANON_ORIGIN_ID_TEST_VECTORS_OUT"
+	inputAnonOriginIDTestVectorEnvironmentKey  = "RATE_LIMITED_ANON_ORIGIN_ID_TEST_VECTORS_IN"
 
-	outputOriginEncryptionTestVectorEnvironmentKey = "PAT_ORIGIN_ENCRYPTION_TEST_VECTORS_OUT"
-	inputOriginEncryptionTestVectorEnvironmentKey  = "PAT_ORIGIN_ENCRYPTION_TEST_VECTORS_IN"
+	outputOriginEncryptionTestVectorEnvironmentKey = "RATE_LIMITED_ORIGIN_ENCRYPTION_TEST_VECTORS_OUT"
+	inputOriginEncryptionTestVectorEnvironmentKey  = "RATE_LIMITED_ORIGIN_ENCRYPTION_TEST_VECTORS_IN"
 )
 
 func loadPrivateKey(t *testing.T) *rsa.PrivateKey {
@@ -230,12 +230,13 @@ type rawOriginEncryptionTestVector struct {
 	KEMID               hpke.KEMID  `json:"kem_id"`
 	KDFID               hpke.KDFID  `json:"kdf_id"`
 	AEADID              hpke.AEADID `json:"aead_id"`
-	NameKeySeed         string      `json:"name_key_seed"`
-	NameKey             string      `json:"name_key"`
-	IndexRequest        string      `json:"index_request"`
+	OriginNameKeySeed   string      `json:"origin_name_key_seed"`
+	OriginNameKey       string      `json:"origin_name_key"`
+	TokenType           uint16      `json:"token_type"`
+	OriginNameKeyID     string      `json:"origin_name_key_id"`
+	IndexRequest        string      `json:"request_key"`
 	TokenKeyID          uint8       `json:"token_key_id"`
-	BlindMessage        string      `json:"blind_message"`
-	IssuerKeyID         string      `json:"issuer_key_id"`
+	BlindMessage        string      `json:"blinded_msg"`
 	OriginName          string      `json:"origin_name"`
 	EncryptedOriginName string      `json:"encrypted_origin_name"`
 }
@@ -247,6 +248,7 @@ type originEncryptionTestVector struct {
 	aeadID              hpke.AEADID
 	nameKeySeed         []byte
 	nameKey             PrivateNameKey
+	tokenType           uint16
 	indexRequest        []byte
 	tokenKeyID          uint8
 	blindMessage        []byte
@@ -281,12 +283,13 @@ func (etv originEncryptionTestVector) MarshalJSON() ([]byte, error) {
 		KEMID:               etv.kemID,
 		KDFID:               etv.kdfID,
 		AEADID:              etv.aeadID,
-		NameKeySeed:         mustHex(etv.nameKeySeed),
-		NameKey:             mustHex(etv.nameKey.Public().Marshal()),
+		OriginNameKeySeed:   mustHex(etv.nameKeySeed),
+		OriginNameKey:       mustHex(etv.nameKey.Public().Marshal()),
+		TokenType:           etv.tokenType,
 		IndexRequest:        mustHex(etv.indexRequest),
 		TokenKeyID:          etv.tokenKeyID,
 		BlindMessage:        mustHex(etv.blindMessage),
-		IssuerKeyID:         mustHex(etv.issuerKeyID),
+		OriginNameKeyID:     mustHex(etv.issuerKeyID),
 		OriginName:          mustHex([]byte(etv.originName)),
 		EncryptedOriginName: mustHex(etv.encryptedOriginName),
 	})
@@ -302,7 +305,11 @@ func (etv *originEncryptionTestVector) UnmarshalJSON(data []byte) error {
 	etv.kemID = raw.KEMID
 	etv.kdfID = raw.KDFID
 	etv.aeadID = raw.AEADID
-	etv.nameKeySeed = mustUnhex(nil, raw.NameKeySeed)
+	etv.nameKeySeed = mustUnhex(nil, raw.OriginNameKeySeed)
+	etv.tokenType = raw.TokenType
+	if etv.tokenType != RateLimitedTokenType {
+		return fmt.Errorf("Unsupported token type")
+	}
 
 	if raw.KEMID != hpke.DHKEM_X25519 ||
 		raw.KDFID != hpke.KDF_HKDF_SHA256 ||
@@ -319,7 +326,7 @@ func (etv *originEncryptionTestVector) UnmarshalJSON(data []byte) error {
 	etv.indexRequest = mustUnhex(nil, raw.IndexRequest)
 	etv.tokenKeyID = raw.TokenKeyID
 	etv.blindMessage = mustUnhex(nil, raw.BlindMessage)
-	etv.issuerKeyID = mustUnhex(nil, raw.IssuerKeyID)
+	etv.issuerKeyID = mustUnhex(nil, raw.OriginNameKeyID)
 	etv.originName = string(mustUnhex(nil, raw.OriginName))
 	etv.encryptedOriginName = mustUnhex(nil, raw.EncryptedOriginName)
 
@@ -335,7 +342,7 @@ func generateOriginEncryptionTestVector(t *testing.T, kemID hpke.KEMID, kdfID hp
 	}
 
 	// Generate random token and index requests
-	indexRequest := make([]byte, 32)
+	indexRequest := make([]byte, 49)
 	rand.Reader.Read(indexRequest)
 	tokenKeyIDBuf := []byte{0x00}
 	rand.Reader.Read(tokenKeyIDBuf)
@@ -348,12 +355,17 @@ func generateOriginEncryptionTestVector(t *testing.T, kemID hpke.KEMID, kdfID hp
 		t.Fatal(err)
 	}
 
+	issuerKeyEnc := nameKey.Public().Marshal()
+	issuerKeyID := sha256.Sum256(issuerKeyEnc)
+
 	return originEncryptionTestVector{
 		kemID:               kemID,
 		kdfID:               kdfID,
 		aeadID:              aeadID,
 		nameKeySeed:         ikm,
 		nameKey:             nameKey,
+		issuerKeyID:         issuerKeyID[:],
+		tokenType:           RateLimitedTokenType,
 		indexRequest:        indexRequest,
 		tokenKeyID:          tokenKeyIDBuf[0],
 		blindMessage:        blindMessage,
@@ -440,17 +452,17 @@ func TestVectorVerifyOriginEncryption(t *testing.T) {
 
 ///////
 // Index computation test vector structure
-type rawIndexTestVector struct {
-	ClientSecret  string `json:"CLIENT_SECRET"`
-	ClientPublic  string `json:"CLIENT_PUBLIC"`
-	OriginSecret  string `json:"ORIGIN_SECRET"`
-	RequestBlind  string `json:"BLIND_KEY"`
-	IndexRequest  string `json:"INDEX_REQUEST"`
-	IndexResponse string `json:"INDEX_RESPONSE"`
-	Index         string `json:"INDEX"`
+type rawAnonOriginIDTestVector struct {
+	ClientSecret  string `json:"sk_sign"`
+	ClientPublic  string `json:"pk_sign"`
+	OriginSecret  string `json:"sk_origin"`
+	RequestBlind  string `json:"request_blind"`
+	IndexRequest  string `json:"request_key"`
+	IndexResponse string `json:"index_key"`
+	Index         string `json:"anon_issuer_origin_id"`
 }
 
-type indexTestVector struct {
+type anonOriginIDTestVector struct {
 	t             *testing.T
 	curve         elliptic.Curve
 	clientSecret  *ecdsa.PrivateKey
@@ -461,16 +473,16 @@ type indexTestVector struct {
 	index         []byte
 }
 
-type indexTestVectorArray struct {
+type anonOriginIDTestVectorArray struct {
 	t       *testing.T
-	vectors []indexTestVector
+	vectors []anonOriginIDTestVector
 }
 
-func (tva indexTestVectorArray) MarshalJSON() ([]byte, error) {
+func (tva anonOriginIDTestVectorArray) MarshalJSON() ([]byte, error) {
 	return json.Marshal(tva.vectors)
 }
 
-func (tva *indexTestVectorArray) UnmarshalJSON(data []byte) error {
+func (tva *anonOriginIDTestVectorArray) UnmarshalJSON(data []byte) error {
 	err := json.Unmarshal(data, &tva.vectors)
 	if err != nil {
 		return err
@@ -482,13 +494,13 @@ func (tva *indexTestVectorArray) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (etv indexTestVector) MarshalJSON() ([]byte, error) {
+func (etv anonOriginIDTestVector) MarshalJSON() ([]byte, error) {
 	clientSecretKey := etv.clientSecret.D.Bytes()
 	clientPublicKey := elliptic.MarshalCompressed(etv.curve, etv.clientSecret.X, etv.clientSecret.Y)
 	originSecretKey := etv.originSecret.D.Bytes()
 	blindKey := etv.requestBlind.D.Bytes()
 
-	return json.Marshal(rawIndexTestVector{
+	return json.Marshal(rawAnonOriginIDTestVector{
 		ClientSecret:  mustHex(clientSecretKey),
 		ClientPublic:  mustHex(clientPublicKey),
 		OriginSecret:  mustHex(originSecretKey),
@@ -499,8 +511,8 @@ func (etv indexTestVector) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func (etv *indexTestVector) UnmarshalJSON(data []byte) error {
-	raw := rawIndexTestVector{}
+func (etv *anonOriginIDTestVector) UnmarshalJSON(data []byte) error {
+	raw := rawAnonOriginIDTestVector{}
 	err := json.Unmarshal(data, &raw)
 	if err != nil {
 		return err
@@ -534,7 +546,7 @@ func (etv *indexTestVector) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func generateIndexTestVector(t *testing.T) indexTestVector {
+func generateAnonOriginIDTestVector(t *testing.T) anonOriginIDTestVector {
 	curve := elliptic.P384()
 	clientSecretKey, _ := ecdsa.GenerateKey(curve, rand.Reader)
 	originSecretKey, _ := ecdsa.GenerateKey(curve, rand.Reader)
@@ -565,7 +577,7 @@ func generateIndexTestVector(t *testing.T) indexTestVector {
 		t.Fatal(err)
 	}
 
-	return indexTestVector{
+	return anonOriginIDTestVector{
 		curve:         curve,
 		clientSecret:  clientSecretKey,
 		originSecret:  originSecretKey,
@@ -576,7 +588,7 @@ func generateIndexTestVector(t *testing.T) indexTestVector {
 	}
 }
 
-func verifyIndexTestVector(t *testing.T, vector indexTestVector) {
+func verifyAnonOriginIDTestVector(t *testing.T, vector anonOriginIDTestVector) {
 	requestKey, err := ecdsa.BlindPublicKey(vector.curve, &vector.clientSecret.PublicKey, vector.requestBlind)
 	if err != nil {
 		t.Fatal(err)
@@ -613,21 +625,21 @@ func verifyIndexTestVector(t *testing.T, vector indexTestVector) {
 	}
 }
 
-func verifyIndexTestVectors(t *testing.T, encoded []byte) {
-	vectors := indexTestVectorArray{t: t}
+func verifyAnonOriginIDTestVectors(t *testing.T, encoded []byte) {
+	vectors := anonOriginIDTestVectorArray{t: t}
 	err := json.Unmarshal(encoded, &vectors)
 	if err != nil {
 		t.Fatalf("Error decoding test vector string: %v", err)
 	}
 
 	for _, vector := range vectors.vectors {
-		verifyIndexTestVector(t, vector)
+		verifyAnonOriginIDTestVector(t, vector)
 	}
 }
 
-func TestVectorGenerateIndex(t *testing.T) {
-	vectors := make([]indexTestVector, 0)
-	vectors = append(vectors, generateIndexTestVector(t))
+func TestVectorGenerateAnonOriginID(t *testing.T) {
+	vectors := make([]anonOriginIDTestVector, 0)
+	vectors = append(vectors, generateAnonOriginIDTestVector(t))
 
 	// Encode the test vectors
 	encoded, err := json.Marshal(vectors)
@@ -636,10 +648,10 @@ func TestVectorGenerateIndex(t *testing.T) {
 	}
 
 	// Verify that we process them correctly
-	verifyIndexTestVectors(t, encoded)
+	verifyAnonOriginIDTestVectors(t, encoded)
 
 	var outputFile string
-	if outputFile = os.Getenv(outputIndexTestVectorEnvironmentKey); len(outputFile) > 0 {
+	if outputFile = os.Getenv(outputAnonOriginIDTestVectorEnvironmentKey); len(outputFile) > 0 {
 		err := ioutil.WriteFile(outputFile, encoded, 0644)
 		if err != nil {
 			t.Fatalf("Error writing test vectors: %v", err)
@@ -647,9 +659,9 @@ func TestVectorGenerateIndex(t *testing.T) {
 	}
 }
 
-func TestVectorVerifyIndex(t *testing.T) {
+func TestVectorVerifyAnonOriginID(t *testing.T) {
 	var inputFile string
-	if inputFile = os.Getenv(inputIndexTestVectorEnvironmentKey); len(inputFile) == 0 {
+	if inputFile = os.Getenv(inputAnonOriginIDTestVectorEnvironmentKey); len(inputFile) == 0 {
 		t.Skip("Test vectors were not provided")
 	}
 
@@ -658,5 +670,5 @@ func TestVectorVerifyIndex(t *testing.T) {
 		t.Fatalf("Failed reading test vectors: %v", err)
 	}
 
-	verifyIndexTestVectors(t, encoded)
+	verifyAnonOriginIDTestVectors(t, encoded)
 }

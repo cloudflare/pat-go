@@ -5,59 +5,49 @@ import textwrap
 def wrap_line(value):
     return textwrap.fill(value, width=72)
 
-if "ed25519-blinding" in sys.argv[1]:
-    ordered_keys = [
-        "skS", "pkS", "skB", "pkB", "pkR", "message", "signature",
-    ]
-    with open(sys.argv[1], "r") as fh:
+def format_vector(vector_keys, vector_fname):
+    with open(vector_fname, "r") as fh:
         data = json.load(fh)
         formatted = "~~~\n"
         for entry in data:
-            for key in ordered_keys:
+            for key in vector_keys:
                 if key in entry:
                     formatted = formatted + wrap_line(key + ": " + str(entry[key])) + "\n"
             formatted = formatted + "\n"
         print(formatted + "~~~\n")
+
+if "ed25519-blinding" in sys.argv[1]:
+    ordered_keys = [
+        "skS", "pkS", "skB", "pkB", "pkR", "message", "signature",
+    ]
+    format_vector(ordered_keys, sys.argv[1])
 
 if "ecdsa-blinding" in sys.argv[1]:
     ordered_keys = [
         "skS", "pkS", "skB", "pkB", "pkR", "message", "signature",
     ]
-    with open(sys.argv[1], "r") as fh:
-        data = json.load(fh)
-        formatted = "~~~\n"
-        for entry in data:
-            for key in ordered_keys:
-                if key in entry:
-                    formatted = formatted + wrap_line(key + ": " + str(entry[key])) + "\n"
-            formatted = formatted + "\n"
-        print(formatted + "~~~\n")
+    format_vector(ordered_keys, sys.argv[1])
 
 if "basic-issuance" in sys.argv[1]:
     ordered_keys = [
         "skS", "pkS", "challenge", "nonce", "blind", "salt", "token_request", "token_response", "token"
     ]
-    with open(sys.argv[1], "r") as fh:
-        data = json.load(fh)
-        formatted = "~~~\n"
-        for entry in data:
-            for key in ordered_keys:
-                if key in entry:
-                    formatted = formatted + wrap_line(key + ": " + str(entry[key])) + "\n"
-            formatted = formatted + "\n"
-        print(formatted + "~~~\n")
+    format_vector(ordered_keys, sys.argv[1])
 
 if "basic-private-issuance" in sys.argv[1]:
     ordered_keys = [
         "skS", "pkS", "challenge", "nonce", "blind", "token_request", "token_response", "token"
     ]
-    with open(sys.argv[1], "r") as fh:
-        data = json.load(fh)
-        formatted = "~~~\n"
-        for entry in data:
-            for key in ordered_keys:
-                if key in entry:
-                    formatted = formatted + wrap_line(key + ": " + str(entry[key])) + "\n"
-            formatted = formatted + "\n"
-        print(formatted + "~~~\n")
+    format_vector(ordered_keys, sys.argv[1])
 
+if "origin-encryption-test-vectors.json" in sys.argv[1]:
+    ordered_keys = [
+        "origin_name", "kem_id", "kdf_id", "aead_id", "origin_name_key_seed", "origin_name_key", "token_type", "token_key_id", "blinded_msg", "request_key", "origin_name_key_id", "encrypted_origin_name"
+    ]
+    format_vector(ordered_keys, sys.argv[1])
+
+if "anon-origin-id-test-vectors.json" in sys.argv[1]:
+    ordered_keys = [
+        "sk_sign", "pk_sign", "sk_origin", "request_blind", "request_key", "index_key", "anon_issuer_origin_id"
+    ]
+    format_vector(ordered_keys, sys.argv[1])
