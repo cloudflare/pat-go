@@ -51,3 +51,9 @@ if "anon-origin-id-test-vectors.json" in sys.argv[1]:
         "sk_sign", "pk_sign", "sk_origin", "request_blind", "request_key", "index_key", "anon_issuer_origin_id"
     ]
     format_vector(ordered_keys, sys.argv[1])
+
+if "token-test-vectors" in sys.argv[1]:
+    ordered_keys = [
+        "token_type", "issuer_name", "redemption_context", "origin_info", "nonce", "token_key", "token_authenticator_input", "token_authenticator"
+    ]
+    format_vector(ordered_keys, sys.argv[1])
