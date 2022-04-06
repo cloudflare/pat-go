@@ -23,12 +23,12 @@ const (
 
 func createTokenChallenge(tokenType uint16, redemptionContext []byte, issuerName string, originInfo []string) TokenChallenge {
 	challenge := TokenChallenge{
-		tokenType:       tokenType,
-		redemptionNonce: make([]byte, len(redemptionContext)),
-		issuerName:      issuerName,
-		originInfo:      originInfo,
+		TokenType:       tokenType,
+		RedemptionNonce: make([]byte, len(redemptionContext)),
+		IssuerName:      issuerName,
+		OriginInfo:      originInfo,
 	}
-	copy(challenge.redemptionNonce, redemptionContext)
+	copy(challenge.RedemptionNonce, redemptionContext)
 	return challenge
 }
 

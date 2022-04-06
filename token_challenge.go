@@ -16,17 +16,17 @@ import (
 //     opaque origin_name<0..2^16-1>;
 // } TokenChallenge;
 type TokenChallenge struct {
-	tokenType       uint16
-	issuerName      string
-	redemptionNonce []byte
-	originInfo      []string
+	TokenType       uint16
+	IssuerName      string
+	RedemptionNonce []byte
+	OriginInfo      []string
 }
 
 func (c TokenChallenge) Equals(o TokenChallenge) bool {
-	if c.tokenType == o.tokenType &&
-		c.issuerName == o.issuerName &&
-		bytes.Equal(c.redemptionNonce, o.redemptionNonce) &&
-		reflect.DeepEqual(c.originInfo, o.originInfo) {
+	if c.TokenType == o.TokenType &&
+		c.IssuerName == o.IssuerName &&
+		bytes.Equal(c.RedemptionNonce, o.RedemptionNonce) &&
+		reflect.DeepEqual(c.OriginInfo, o.OriginInfo) {
 		return true
 	}
 	return false
@@ -34,15 +34,15 @@ func (c TokenChallenge) Equals(o TokenChallenge) bool {
 
 func (c TokenChallenge) Marshal() []byte {
 	b := cryptobyte.NewBuilder(nil)
-	b.AddUint16(c.tokenType)
+	b.AddUint16(c.TokenType)
 	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-		b.AddBytes([]byte(c.issuerName))
+		b.AddBytes([]byte(c.IssuerName))
 	})
 	b.AddUint8LengthPrefixed(func(b *cryptobyte.Builder) {
-		b.AddBytes(c.redemptionNonce)
+		b.AddBytes(c.RedemptionNonce)
 	})
 	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-		b.AddBytes([]byte(strings.Join(c.originInfo, ",")))
+		b.AddBytes([]byte(strings.Join(c.OriginInfo, ",")))
 	})
 	return b.BytesOrPanic()
 }
@@ -52,7 +52,7 @@ func UnmarshalTokenChallenge(data []byte) (TokenChallenge, error) {
 
 	challenge := TokenChallenge{}
 
-	if !s.ReadUint16(&challenge.tokenType) {
+	if !s.ReadUint16(&challenge.TokenType) {
 		return TokenChallenge{}, fmt.Errorf("Invalid TokenChallenge encoding")
 	}
 
@@ -60,20 +60,20 @@ func UnmarshalTokenChallenge(data []byte) (TokenChallenge, error) {
 	if !s.ReadUint16LengthPrefixed(&issuerName) || issuerName.Empty() {
 		return TokenChallenge{}, fmt.Errorf("Invalid TokenChallenge encoding")
 	}
-	challenge.issuerName = string(issuerName)
+	challenge.IssuerName = string(issuerName)
 
 	var redemptionNonce cryptobyte.String
 	if !s.ReadUint8LengthPrefixed(&redemptionNonce) {
 		return TokenChallenge{}, fmt.Errorf("Invalid TokenChallenge encoding")
 	}
-	challenge.redemptionNonce = make([]byte, len(redemptionNonce))
-	copy(challenge.redemptionNonce, redemptionNonce)
+	challenge.RedemptionNonce = make([]byte, len(redemptionNonce))
+	copy(challenge.RedemptionNonce, redemptionNonce)
 
 	var originInfo cryptobyte.String
 	if !s.ReadUint16LengthPrefixed(&originInfo) {
 		return TokenChallenge{}, fmt.Errorf("Invalid TokenRequest encoding")
 	}
-	challenge.originInfo = strings.Split(string(originInfo), ",")
+	challenge.OriginInfo = strings.Split(string(originInfo), ",")
 
 	return challenge, nil
 }
