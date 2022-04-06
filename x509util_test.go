@@ -8,17 +8,17 @@ func TestEncode(t *testing.T) {
 	rsaPrivateKey := loadPrivateKey(t)
 	publicKey := rsaPrivateKey.PublicKey
 
-	publicKeyEnc, err := marshalTokenKey(&publicKey, false)
+	publicKeyEnc, err := MarshalTokenKey(&publicKey, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	recoveredKey, err := unmarshalTokenKey(publicKeyEnc)
+	recoveredKey, err := UnmarshalTokenKey(publicKeyEnc)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	legacyEnc, err := marshalTokenKey(&publicKey, true)
+	legacyEnc, err := MarshalTokenKey(&publicKey, true)
 	if err != nil {
 		t.Fatal(err)
 	}

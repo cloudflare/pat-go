@@ -32,7 +32,7 @@ func marshalTokenPrivateKey(key *rsa.PrivateKey) ([]byte, error) {
 	}
 
 	block := &pem.Block{
-		Type:  "PRIVATE KEY", // XXX(caw): move to constant
+		Type:  "PRIVATE KEY",
 		Bytes: der,
 	}
 
@@ -42,7 +42,7 @@ func marshalTokenPrivateKey(key *rsa.PrivateKey) ([]byte, error) {
 func unmarshalTokenPrivateKey(data []byte) (*rsa.PrivateKey, error) {
 	block, _ := pem.Decode(data)
 	if block == nil || block.Type != "PRIVATE KEY" {
-		return nil, fmt.Errorf("Invalid private key encoding") // XXX(caw): move to constant
+		return nil, fmt.Errorf("Invalid private key encoding")
 	}
 
 	privateKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
@@ -53,7 +53,7 @@ func unmarshalTokenPrivateKey(data []byte) (*rsa.PrivateKey, error) {
 	return privateKey.(*rsa.PrivateKey), nil
 }
 
-func marshalTokenKeyPSSOID(key *rsa.PublicKey) ([]byte, error) {
+func MarshalTokenKeyPSSOID(key *rsa.PublicKey) ([]byte, error) {
 	publicKeyBytes, err := asn1.Marshal(pkcs1PSSPublicKey{
 		N: key.N,
 		E: key.E,
@@ -91,19 +91,19 @@ func marshalTokenKeyPSSOID(key *rsa.PublicKey) ([]byte, error) {
 	return b.BytesOrPanic(), nil
 }
 
-func marshalTokenKeyRSAEncryptionOID(key *rsa.PublicKey) ([]byte, error) {
+func MarshalTokenKeyRSAEncryptionOID(key *rsa.PublicKey) ([]byte, error) {
 	return x509.MarshalPKIXPublicKey(key)
 }
 
-func marshalTokenKey(key *rsa.PublicKey, legacyFormat bool) ([]byte, error) {
+func MarshalTokenKey(key *rsa.PublicKey, legacyFormat bool) ([]byte, error) {
 	if legacyFormat {
-		return marshalTokenKeyRSAEncryptionOID(key)
+		return MarshalTokenKeyRSAEncryptionOID(key)
 	} else {
-		return marshalTokenKeyPSSOID(key)
+		return MarshalTokenKeyPSSOID(key)
 	}
 }
 
-func unmarshalTokenKey(data []byte) (*rsa.PublicKey, error) {
+func UnmarshalTokenKey(data []byte) (*rsa.PublicKey, error) {
 	s := cryptobyte.String(data)
 
 	var sequenceString cryptobyte.String

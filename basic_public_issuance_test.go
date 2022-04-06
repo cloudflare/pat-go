@@ -135,7 +135,7 @@ func mustUnmarshalPrivateKey(data []byte) *rsa.PrivateKey {
 }
 
 func mustMarshalPublicKey(key *rsa.PublicKey) []byte {
-	encodedKey, err := marshalTokenKeyPSSOID(key)
+	encodedKey, err := MarshalTokenKeyPSSOID(key)
 	if err != nil {
 		panic(err)
 	}
@@ -143,7 +143,7 @@ func mustMarshalPublicKey(key *rsa.PublicKey) []byte {
 }
 
 func mustUnmarshalPublicKey(data []byte) *rsa.PublicKey {
-	publicKey, err := unmarshalTokenKey(data)
+	publicKey, err := UnmarshalTokenKey(data)
 	if err != nil {
 		panic(err)
 	}
