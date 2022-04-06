@@ -8,3 +8,4 @@ vectors: test
 	RATE_LIMITED_ORIGIN_ENCRYPTION_TEST_VECTORS_OUT=origin-encryption-test-vectors.json go test -v -run TestVectorGenerateOriginEncryption
 	BASIC_PRIVATE_ISSUANCE_TEST_VECTORS_OUT=basic-private-issuance-test-vectors.json go test -v -run TestVectorGenerateBasicPrivateIssuance
 	BASIC_PUBLIC_ISSUANCE_TEST_VECTORS_OUT=basic-public-issuance-test-vectors.json go test -v -run TestVectorGenerateBasicIssuance
+	TOKEN_TEST_VECTORS_OUT=token-test-vectors.json go test -v -run TestVectorGenerateToken
