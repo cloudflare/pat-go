@@ -71,6 +71,28 @@ func CreateRateLimitedClientFromSecret(secret []byte) RateLimitedClient {
 }
 
 // https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-encrypting-origin-names
+func padOriginName(originName string) []byte {
+	N := 31 - ((len(originName) - 1) % 32)
+	zeroes := make([]byte, N)
+	return append([]byte(originName), zeroes...)
+}
+
+func unpadOriginName(paddedOriginName []byte) string {
+	lastNonZero := len(paddedOriginName) - 1
+	for {
+		if lastNonZero < 0 {
+			// The plaintext was empty, so the input was the empty string
+			return ""
+		}
+		if paddedOriginName[lastNonZero] != 0x00 {
+			break
+		}
+		lastNonZero--
+	}
+	return string(paddedOriginName[0 : lastNonZero+1])
+}
+
+// https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-encrypting-origin-names
 func encryptOriginName(nameKey PublicNameKey, tokenKeyID uint8, blindedMessage []byte, requestKey []byte, originName string) ([]byte, []byte, error) {
 	issuerKeyEnc := nameKey.Marshal()
 	issuerKeyID := sha256.Sum256(issuerKeyEnc)
@@ -92,7 +114,7 @@ func encryptOriginName(nameKey PublicNameKey, tokenKeyID uint8, blindedMessage [
 	b.AddBytes(issuerKeyID[:])
 
 	aad := b.BytesOrPanic()
-	ct := context.Seal(aad, []byte(originName))
+	ct := context.Seal(aad, padOriginName(originName))
 	encryptedOriginName := append(enc, ct...)
 
 	return issuerKeyID[:], encryptedOriginName, nil
@@ -297,15 +319,17 @@ func (i *RateLimitedIssuer) OriginTokenKey(origin string) *rsa.PublicKey {
 }
 
 func (i *RateLimitedIssuer) OriginTokenKeyID(origin string) []byte {
-	// key, ok := i.originTokenKeys[origin]
-	// if !ok {
-	// 	return nil
-	// }
-	// publicKey := &key.PublicKey
-	// XXX(caw): return DER encoding RSA-PSS SPKI wrapper
-	keyID := make([]byte, 32)
-	keyID[0] = 0x01
-	return keyID
+	key, ok := i.originTokenKeys[origin]
+	if !ok {
+		return nil
+	}
+	publicKey := &key.PublicKey
+	publicKeyEnc, err := MarshalTokenKeyPSSOID(publicKey)
+	if err != nil {
+		panic(err)
+	}
+	keyID := sha256.Sum256(publicKeyEnc)
+	return keyID[:]
 }
 
 func decryptOriginName(nameKey PrivateNameKey, tokenKeyID uint8, blindedMessage []byte, requestKey []byte, encryptedOriginName []byte) (string, error) {
@@ -337,7 +361,7 @@ func decryptOriginName(nameKey PrivateNameKey, tokenKeyID uint8, blindedMessage 
 		return "", err
 	}
 
-	return string(originName), err
+	return unpadOriginName(originName), err
 }
 
 func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byte, error) {
@@ -347,13 +371,13 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 		return nil, nil, err
 	}
 
-	originIndexKey, ok := i.originIndexKeys[string(originName)]
+	originIndexKey, ok := i.originIndexKeys[originName]
 	if !ok {
-		return nil, nil, fmt.Errorf("Unknown origin: %s", string(originName))
+		return nil, nil, fmt.Errorf("Unknown origin: %s", originName)
 	}
-	originTokenKey, ok := i.originTokenKeys[string(originName)]
+	originTokenKey, ok := i.originTokenKeys[originName]
 	if !ok {
-		return nil, nil, fmt.Errorf("Unknown origin: %s", string(originName))
+		return nil, nil, fmt.Errorf("Unknown origin: %s", originName)
 	}
 
 	// XXX(caw): factor out functionality above, and also check the keyID

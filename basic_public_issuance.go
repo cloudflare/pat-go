@@ -140,9 +140,12 @@ func (i *BasicPublicIssuer) TokenKey() *rsa.PublicKey {
 }
 
 func (i *BasicPublicIssuer) TokenKeyID() []byte {
-	keyID := make([]byte, 32)
-	keyID[0] = 0x01
-	return keyID
+	publicKeyEnc, err := MarshalTokenKeyPSSOID(&i.tokenKey.PublicKey)
+	if err != nil {
+		panic(err)
+	}
+	keyID := sha256.Sum256(publicKeyEnc)
+	return keyID[:]
 }
 
 func (i BasicPublicIssuer) Evaluate(req *BasicPublicTokenRequest) ([]byte, error) {
