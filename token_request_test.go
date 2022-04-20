@@ -9,7 +9,7 @@ import (
 )
 
 func TestRequestMarshal(t *testing.T) {
-	issuer := NewRateLimitedIssuer()
+	issuer := NewRateLimitedIssuer(loadPrivateKey(t))
 	testOrigin := "origin.example"
 	issuer.AddOrigin(testOrigin)
 
@@ -24,8 +24,8 @@ func TestRequestMarshal(t *testing.T) {
 	nonce := make([]byte, 32)
 	rand.Reader.Read(nonce)
 
-	tokenKeyID := issuer.OriginTokenKeyID(testOrigin)
-	tokenPublicKey := issuer.OriginTokenKey(testOrigin)
+	tokenKeyID := issuer.OriginTokenKeyID()
+	tokenPublicKey := issuer.OriginTokenKey()
 	blindKeyEnc := blindKey.D.Bytes()
 
 	requestState, err := client.CreateTokenRequest(challenge, nonce, blindKeyEnc, tokenKeyID, tokenPublicKey, testOrigin, issuer.NameKey())

@@ -125,7 +125,7 @@ func TestSignatureDifferences(t *testing.T) {
 }
 
 func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
-	issuer := NewRateLimitedIssuer()
+	issuer := NewRateLimitedIssuer(loadPrivateKey(t))
 	testOrigin := "origin.example"
 	issuer.AddOrigin(testOrigin)
 
@@ -140,8 +140,8 @@ func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 	nonce := make([]byte, 32)
 	rand.Reader.Read(nonce)
 
-	tokenKeyID := issuer.OriginTokenKeyID(testOrigin)
-	tokenPublicKey := issuer.OriginTokenKey(testOrigin)
+	tokenKeyID := issuer.OriginTokenKeyID()
+	tokenPublicKey := issuer.OriginTokenKey()
 	originIndexKey := issuer.OriginIndexKey(testOrigin)
 
 	requestState, err := client.CreateTokenRequest(challenge, nonce, blindKey.D.Bytes(), tokenKeyID, tokenPublicKey, testOrigin, issuer.NameKey())

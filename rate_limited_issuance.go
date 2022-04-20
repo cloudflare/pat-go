@@ -249,11 +249,11 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 type RateLimitedIssuer struct {
 	curve           elliptic.Curve
 	nameKey         PrivateNameKey
+	tokenKey        *rsa.PrivateKey
 	originIndexKeys map[string]*ecdsa.PrivateKey
-	originTokenKeys map[string]*rsa.PrivateKey
 }
 
-func NewRateLimitedIssuer() *RateLimitedIssuer {
+func NewRateLimitedIssuer(key *rsa.PrivateKey) *RateLimitedIssuer {
 	suite, err := hpke.AssembleCipherSuite(hpke.DHKEM_X25519, hpke.KDF_HKDF_SHA256, hpke.AEAD_AESGCM128)
 	if err != nil {
 		return nil
@@ -276,8 +276,8 @@ func NewRateLimitedIssuer() *RateLimitedIssuer {
 	return &RateLimitedIssuer{
 		curve:           elliptic.P384(),
 		nameKey:         nameKey,
+		tokenKey:        key,
 		originIndexKeys: make(map[string]*ecdsa.PrivateKey),
-		originTokenKeys: make(map[string]*rsa.PrivateKey),
 	}
 }
 
@@ -291,13 +291,7 @@ func (i *RateLimitedIssuer) AddOrigin(origin string) error {
 		return err
 	}
 
-	tokenKey, err := rsa.GenerateKey(rand.Reader, 4096)
-	if err != nil {
-		return err
-	}
-
 	i.originIndexKeys[origin] = privateKey
-	i.originTokenKeys[origin] = tokenKey
 
 	return nil
 }
@@ -310,20 +304,12 @@ func (i *RateLimitedIssuer) OriginIndexKey(origin string) *ecdsa.PrivateKey {
 	return key
 }
 
-func (i *RateLimitedIssuer) OriginTokenKey(origin string) *rsa.PublicKey {
-	key, ok := i.originTokenKeys[origin]
-	if !ok {
-		return nil
-	}
-	return &key.PublicKey
+func (i *RateLimitedIssuer) OriginTokenKey() *rsa.PublicKey {
+	return &i.tokenKey.PublicKey
 }
 
-func (i *RateLimitedIssuer) OriginTokenKeyID(origin string) []byte {
-	key, ok := i.originTokenKeys[origin]
-	if !ok {
-		return nil
-	}
-	publicKey := &key.PublicKey
+func (i *RateLimitedIssuer) OriginTokenKeyID() []byte {
+	publicKey := i.OriginTokenKey()
 	publicKeyEnc, err := MarshalTokenKeyPSSOID(publicKey)
 	if err != nil {
 		panic(err)
@@ -375,10 +361,6 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 	if !ok {
 		return nil, nil, fmt.Errorf("Unknown origin: %s", originName)
 	}
-	originTokenKey, ok := i.originTokenKeys[originName]
-	if !ok {
-		return nil, nil, fmt.Errorf("Unknown origin: %s", originName)
-	}
 
 	// XXX(caw): factor out functionality above, and also check the keyID
 	x, y := elliptic.UnmarshalCompressed(i.curve, req.requestKey)
@@ -417,7 +399,7 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 	blindedRequestKeyEnc := elliptic.MarshalCompressed(i.curve, blindedRequestKey.X, blindedRequestKey.Y)
 
 	// Blinded signature
-	signer := blindrsa.NewRSASigner(originTokenKey)
+	signer := blindrsa.NewRSASigner(i.tokenKey)
 	blindSignature, err := signer.BlindSign(req.blindedReq)
 	if err != nil {
 		return nil, nil, err
@@ -437,10 +419,6 @@ func (i RateLimitedIssuer) EvaluateWithoutCheck(req *RateLimitedTokenRequest) ([
 	if !ok {
 		return nil, nil, fmt.Errorf("Unknown origin: %s", string(originName))
 	}
-	originTokenKey, ok := i.originTokenKeys[string(originName)]
-	if !ok {
-		return nil, nil, fmt.Errorf("Unknown origin: %s", string(originName))
-	}
 
 	// Blinded key
 	x, y := elliptic.UnmarshalCompressed(i.curve, req.requestKey)
@@ -454,7 +432,7 @@ func (i RateLimitedIssuer) EvaluateWithoutCheck(req *RateLimitedTokenRequest) ([
 	blindedRequestKeyEnc := elliptic.MarshalCompressed(i.curve, blindedRequestKey.X, blindedRequestKey.Y)
 
 	// Blinded signature
-	signer := blindrsa.NewRSASigner(originTokenKey)
+	signer := blindrsa.NewRSASigner(i.tokenKey)
 	blindSignature, err := signer.BlindSign(req.blindedReq)
 	if err != nil {
 		return nil, nil, err
