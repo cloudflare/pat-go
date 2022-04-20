@@ -304,12 +304,12 @@ func (i *RateLimitedIssuer) OriginIndexKey(origin string) *ecdsa.PrivateKey {
 	return key
 }
 
-func (i *RateLimitedIssuer) OriginTokenKey() *rsa.PublicKey {
+func (i *RateLimitedIssuer) TokenKey() *rsa.PublicKey {
 	return &i.tokenKey.PublicKey
 }
 
-func (i *RateLimitedIssuer) OriginTokenKeyID() []byte {
-	publicKey := i.OriginTokenKey()
+func (i *RateLimitedIssuer) TokenKeyID() []byte {
+	publicKey := i.TokenKey()
 	publicKeyEnc, err := MarshalTokenKeyPSSOID(publicKey)
 	if err != nil {
 		panic(err)

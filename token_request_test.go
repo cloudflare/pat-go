@@ -24,8 +24,8 @@ func TestRequestMarshal(t *testing.T) {
 	nonce := make([]byte, 32)
 	rand.Reader.Read(nonce)
 
-	tokenKeyID := issuer.OriginTokenKeyID()
-	tokenPublicKey := issuer.OriginTokenKey()
+	tokenKeyID := issuer.TokenKeyID()
+	tokenPublicKey := issuer.TokenKey()
 	blindKeyEnc := blindKey.D.Bytes()
 
 	requestState, err := client.CreateTokenRequest(challenge, nonce, blindKeyEnc, tokenKeyID, tokenPublicKey, testOrigin, issuer.NameKey())

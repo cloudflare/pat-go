@@ -140,8 +140,8 @@ func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 	nonce := make([]byte, 32)
 	rand.Reader.Read(nonce)
 
-	tokenKeyID := issuer.OriginTokenKeyID()
-	tokenPublicKey := issuer.OriginTokenKey()
+	tokenKeyID := issuer.TokenKeyID()
+	tokenPublicKey := issuer.TokenKey()
 	originIndexKey := issuer.OriginIndexKey(testOrigin)
 
 	requestState, err := client.CreateTokenRequest(challenge, nonce, blindKey.D.Bytes(), tokenKeyID, tokenPublicKey, testOrigin, issuer.NameKey())
