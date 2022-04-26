@@ -28,7 +28,7 @@ if "ecdsa-blinding" in sys.argv[1]:
     ]
     format_vector(ordered_keys, sys.argv[1])
 
-if "basic-issuance" in sys.argv[1]:
+if "basic-public-issuance" in sys.argv[1]:
     ordered_keys = [
         "skS", "pkS", "challenge", "nonce", "blind", "salt", "token_request", "token_response", "token"
     ]

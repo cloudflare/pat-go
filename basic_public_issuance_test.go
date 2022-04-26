@@ -188,7 +188,7 @@ func (etv *basicIssuanceTestVector) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func generateBasicIssuanceBlindingTestVector(t *testing.T) basicIssuanceTestVector {
+func generateBasicIssuanceTestVector(t *testing.T) basicIssuanceTestVector {
 	tokenKey := loadPrivateKey(t)
 
 	issuer := NewBasicPublicIssuer(tokenKey)
@@ -272,8 +272,7 @@ func verifyBasicIssuanceTestVectors(t *testing.T, encoded []byte) {
 
 func TestVectorGenerateBasicIssuance(t *testing.T) {
 	vectors := make([]basicIssuanceTestVector, 0)
-	vectors = append(vectors, generateBasicIssuanceBlindingTestVector(t))
-	vectors = append(vectors, generateBasicIssuanceBlindingTestVector(t))
+	vectors = append(vectors, generateBasicIssuanceTestVector(t))
 
 	// Encode the test vectors
 	encoded, err := json.Marshal(vectors)

@@ -60,7 +60,7 @@ func (r *BasicPrivateTokenRequest) Unmarshal(data []byte) bool {
 type BasicPublicTokenRequest struct {
 	raw        []byte
 	tokenKeyID uint8
-	blindedReq []byte // 512 bytes
+	blindedReq []byte // 256 bytes
 }
 
 func (r BasicPublicTokenRequest) Type() uint16 {
@@ -96,7 +96,7 @@ func (r *BasicPublicTokenRequest) Unmarshal(data []byte) bool {
 	if !s.ReadUint16(&tokenType) ||
 		tokenType != BasicPublicTokenType ||
 		!s.ReadUint8(&r.tokenKeyID) ||
-		!s.ReadBytes(&r.blindedReq, 512) {
+		!s.ReadBytes(&r.blindedReq, 256) {
 		return false
 	}
 
@@ -107,7 +107,7 @@ func (r *BasicPublicTokenRequest) Unmarshal(data []byte) bool {
 type RateLimitedTokenRequest struct {
 	raw                 []byte
 	tokenKeyID          uint8
-	blindedReq          []byte // 512 bytes
+	blindedReq          []byte // 256 bytes
 	requestKey          []byte // 49 bytes
 	nameKeyID           []byte // 32 bytes
 	encryptedOriginName []byte // 16-bit length prefixed slice
@@ -158,7 +158,7 @@ func (r *RateLimitedTokenRequest) Unmarshal(data []byte) bool {
 	if !s.ReadUint16(&tokenType) ||
 		tokenType != RateLimitedTokenType ||
 		!s.ReadUint8(&r.tokenKeyID) ||
-		!s.ReadBytes(&r.blindedReq, 512) ||
+		!s.ReadBytes(&r.blindedReq, 256) ||
 		!s.ReadBytes(&r.requestKey, 49) ||
 		!s.ReadBytes(&r.nameKeyID, 32) {
 		return false
