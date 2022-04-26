@@ -55,7 +55,7 @@ func UnmarshalToken(data []byte) (Token, error) {
 		!s.ReadBytes(&token.Nonce, 32) ||
 		!s.ReadBytes(&token.Context, 32) ||
 		!s.ReadBytes(&token.KeyID, 32) ||
-		!s.ReadBytes(&token.Authenticator, 512) {
+		!s.ReadBytes(&token.Authenticator, 256) {
 		return Token{}, fmt.Errorf("Invalid Token encoding")
 	}
 
