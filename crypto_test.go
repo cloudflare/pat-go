@@ -31,8 +31,7 @@ type rawECDSABlindingTestVector struct {
 	Hash           string `json:"Hash"`
 	PrivateKey     string `json:"skS"`
 	PublicKey      string `json:"pkS"`
-	PrivateBlind   string `json:"skB"`
-	PublicBlind    string `json:"pkB"`
+	PrivateBlind   string `json:"bk"`
 	BlindPublicKey string `json:"pkR"`
 	Message        string `json:"message"`
 	Signature      string `json:"signature"`
@@ -43,7 +42,7 @@ type ecdsaBlindingTestVector struct {
 	c       elliptic.Curve
 	h       crypto.Hash
 	skS     *ecdsa.PrivateKey
-	skB     *ecdsa.PrivateKey
+	bk      *ecdsa.PrivateKey
 	pkR     *ecdsa.PublicKey
 	message []byte
 	r       *big.Int
@@ -77,15 +76,14 @@ func (etv ecdsaBlindingTestVector) MarshalJSON() ([]byte, error) {
 	etv.skS.D.FillBytes(skSEnc)
 
 	pkSEnc := elliptic.MarshalCompressed(etv.c, etv.skS.X, etv.skS.Y)
-	pkBEnc := elliptic.MarshalCompressed(etv.c, etv.skB.X, etv.skB.Y)
-	pkR, err := ecdsa.BlindPublicKey(etv.c, &etv.skS.PublicKey, etv.skB)
+	pkR, err := ecdsa.BlindPublicKey(etv.c, &etv.skS.PublicKey, etv.bk)
 	if err != nil {
 		return nil, err
 	}
 	pkREnc := elliptic.MarshalCompressed(etv.c, pkR.X, pkR.Y)
 
 	skBEnc := make([]byte, scalarLen)
-	etv.skB.D.FillBytes(skBEnc)
+	etv.bk.D.FillBytes(skBEnc)
 
 	rEnc := make([]byte, scalarLen)
 	sEnc := make([]byte, scalarLen)
@@ -99,7 +97,6 @@ func (etv ecdsaBlindingTestVector) MarshalJSON() ([]byte, error) {
 		PrivateKey:     mustHex(skSEnc),
 		PublicKey:      mustHex(pkSEnc),
 		PrivateBlind:   mustHex(skBEnc),
-		PublicBlind:    mustHex(pkBEnc),
 		BlindPublicKey: mustHex(pkREnc),
 		Message:        mustHex(etv.message),
 		Signature:      mustHex(sig),
@@ -137,15 +134,12 @@ func (etv *ecdsaBlindingTestVector) UnmarshalJSON(data []byte) error {
 		curve, pkSx, pkSy,
 	}
 
-	pkBx, pkBy := elliptic.UnmarshalCompressed(curve, mustUnhex(nil, raw.PublicBlind))
-	pkB := ecdsa.PublicKey{
-		curve, pkBx, pkBy,
-	}
-
 	pkRx, pkRy := elliptic.UnmarshalCompressed(curve, mustUnhex(nil, raw.BlindPublicKey))
 	pkR := ecdsa.PublicKey{
 		curve, pkRx, pkRy,
 	}
+
+	pkBx, pkBy := curve.ScalarBaseMult(skB.Bytes())
 
 	scalarLen := (curve.Params().Params().BitSize + 7) / 8
 	sigEnc := mustUnhex(nil, raw.Signature)
@@ -153,8 +147,12 @@ func (etv *ecdsaBlindingTestVector) UnmarshalJSON(data []byte) error {
 	etv.skS = &ecdsa.PrivateKey{
 		pkS, skS,
 	}
-	etv.skB = &ecdsa.PrivateKey{
-		pkB, skB,
+	etv.bk = &ecdsa.PrivateKey{
+		ecdsa.PublicKey{
+			Curve: curve,
+			X:     pkBx,
+			Y:     pkBy,
+		}, skB,
 	}
 	etv.pkR = &pkR
 	etv.message = mustUnhex(nil, raw.Message)
@@ -191,7 +189,7 @@ func generateECDSABlindingTestVector(t *testing.T, c elliptic.Curve, h crypto.Ha
 		c:       c,
 		h:       h,
 		skS:     skS,
-		skB:     skB,
+		bk:      skB,
 		pkR:     pkR,
 		message: message,
 		r:       r,
@@ -200,7 +198,7 @@ func generateECDSABlindingTestVector(t *testing.T, c elliptic.Curve, h crypto.Ha
 }
 
 func verifyECDSABlindingTestVector(t *testing.T, vector ecdsaBlindingTestVector) {
-	pkR, err := ecdsa.BlindPublicKey(vector.c, &vector.skS.PublicKey, vector.skB)
+	pkR, err := ecdsa.BlindPublicKey(vector.c, &vector.skS.PublicKey, vector.bk)
 	if err != nil {
 		t.Fatal("BlindPublicKey failed")
 	}
@@ -349,9 +347,6 @@ func generateEd25519BlindingTestVector(t *testing.T, blindLen int) ed25519Blindi
 
 	privateKey := ed25519.NewKeyFromSeed(skS)
 	publicKey := privateKey.Public().(ed25519.PublicKey)
-	blindKey := ed25519.NewKeyFromSeed(skB)
-	blindPublicKey := blindKey.Public().(ed25519.PublicKey)
-
 	publicBlind, err := ed25519.BlindPublicKey(publicKey, skB)
 	if err != nil {
 		t.Fatal(err)
@@ -364,7 +359,6 @@ func generateEd25519BlindingTestVector(t *testing.T, blindLen int) ed25519Blindi
 		skS:       skS,
 		pkS:       publicKey,
 		skB:       skB,
-		pkB:       blindPublicKey,
 		pkR:       publicBlind,
 		message:   message,
 		signature: signature,
