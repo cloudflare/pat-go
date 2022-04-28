@@ -203,34 +203,36 @@ func mustHex(d []byte) string {
 ///////
 // Index computation test vector structure
 type rawOriginEncryptionTestVector struct {
-	KEMID               hpke.KEMID  `json:"kem_id"`
-	KDFID               hpke.KDFID  `json:"kdf_id"`
-	AEADID              hpke.AEADID `json:"aead_id"`
-	OriginNameKeySeed   string      `json:"origin_name_key_seed"`
-	OriginNameKey       string      `json:"origin_name_key"`
-	TokenType           uint16      `json:"token_type"`
-	OriginNameKeyID     string      `json:"origin_name_key_id"`
-	IndexRequest        string      `json:"request_key"`
-	TokenKeyID          uint8       `json:"token_key_id"`
-	BlindMessage        string      `json:"blinded_msg"`
-	OriginName          string      `json:"origin_name"`
-	EncryptedOriginName string      `json:"encrypted_origin_name"`
+	KEMID                 hpke.KEMID  `json:"kem_id"`
+	KDFID                 hpke.KDFID  `json:"kdf_id"`
+	AEADID                hpke.AEADID `json:"aead_id"`
+	OriginNameKeySeed     string      `json:"origin_name_key_seed"`
+	OriginNameKey         string      `json:"origin_name_key"`
+	TokenType             uint16      `json:"token_type"`
+	OriginNameKeyID       string      `json:"issuer_encap_key_id"`
+	IndexRequest          string      `json:"request_key"`
+	TokenKeyID            uint8       `json:"token_key_id"`
+	BlindMessage          string      `json:"blinded_msg"`
+	OriginName            string      `json:"origin_name"`
+	EncapSecret           string      `json:"encap_secret"`
+	EncryptedTokenRequest string      `json:"encrypted_token_request"`
 }
 
 type originEncryptionTestVector struct {
-	t                   *testing.T
-	kemID               hpke.KEMID
-	kdfID               hpke.KDFID
-	aeadID              hpke.AEADID
-	nameKeySeed         []byte
-	nameKey             PrivateNameKey
-	tokenType           uint16
-	indexRequest        []byte
-	tokenKeyID          uint8
-	blindMessage        []byte
-	issuerKeyID         []byte
-	originName          string
-	encryptedOriginName []byte
+	t                     *testing.T
+	kemID                 hpke.KEMID
+	kdfID                 hpke.KDFID
+	aeadID                hpke.AEADID
+	nameKeySeed           []byte
+	nameKey               PrivateNameKey
+	tokenType             uint16
+	indexRequest          []byte
+	tokenKeyID            uint8
+	blindMessage          []byte
+	issuerKeyID           []byte
+	originName            string
+	encryptedTokenRequest []byte
+	encapSecret           []byte
 }
 
 type originEncryptionTestVectorArray struct {
@@ -256,18 +258,19 @@ func (tva *originEncryptionTestVectorArray) UnmarshalJSON(data []byte) error {
 
 func (etv originEncryptionTestVector) MarshalJSON() ([]byte, error) {
 	return json.Marshal(rawOriginEncryptionTestVector{
-		KEMID:               etv.kemID,
-		KDFID:               etv.kdfID,
-		AEADID:              etv.aeadID,
-		OriginNameKeySeed:   mustHex(etv.nameKeySeed),
-		OriginNameKey:       mustHex(etv.nameKey.Public().Marshal()),
-		TokenType:           etv.tokenType,
-		IndexRequest:        mustHex(etv.indexRequest),
-		TokenKeyID:          etv.tokenKeyID,
-		BlindMessage:        mustHex(etv.blindMessage),
-		OriginNameKeyID:     mustHex(etv.issuerKeyID),
-		OriginName:          mustHex([]byte(etv.originName)),
-		EncryptedOriginName: mustHex(etv.encryptedOriginName),
+		KEMID:                 etv.kemID,
+		KDFID:                 etv.kdfID,
+		AEADID:                etv.aeadID,
+		OriginNameKeySeed:     mustHex(etv.nameKeySeed),
+		OriginNameKey:         mustHex(etv.nameKey.Public().Marshal()),
+		TokenType:             etv.tokenType,
+		IndexRequest:          mustHex(etv.indexRequest),
+		TokenKeyID:            etv.tokenKeyID,
+		BlindMessage:          mustHex(etv.blindMessage),
+		OriginNameKeyID:       mustHex(etv.issuerKeyID),
+		OriginName:            mustHex([]byte(etv.originName)),
+		EncryptedTokenRequest: mustHex(etv.encryptedTokenRequest),
+		EncapSecret:           mustHex(etv.encapSecret),
 	})
 }
 
@@ -304,7 +307,8 @@ func (etv *originEncryptionTestVector) UnmarshalJSON(data []byte) error {
 	etv.blindMessage = mustUnhex(nil, raw.BlindMessage)
 	etv.issuerKeyID = mustUnhex(nil, raw.OriginNameKeyID)
 	etv.originName = string(mustUnhex(nil, raw.OriginName))
-	etv.encryptedOriginName = mustUnhex(nil, raw.EncryptedOriginName)
+	etv.encryptedTokenRequest = mustUnhex(nil, raw.EncryptedTokenRequest)
+	etv.encapSecret = mustUnhex(nil, raw.EncapSecret)
 
 	return nil
 }
@@ -322,11 +326,11 @@ func generateOriginEncryptionTestVector(t *testing.T, kemID hpke.KEMID, kdfID hp
 	rand.Reader.Read(indexRequest)
 	tokenKeyIDBuf := []byte{0x00}
 	rand.Reader.Read(tokenKeyIDBuf)
-	blindMessage := make([]byte, 512)
+	blindMessage := make([]byte, 256)
 	rand.Reader.Read(blindMessage)
 
 	originName := "test.example"
-	_, encryptedName, err := encryptOriginName(nameKey.Public(), tokenKeyIDBuf[0], blindMessage, indexRequest, originName)
+	_, encryptedTokenRequest, secret, err := encryptOriginTokenRequest(nameKey.Public(), tokenKeyIDBuf[0], blindMessage, indexRequest, originName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -335,18 +339,19 @@ func generateOriginEncryptionTestVector(t *testing.T, kemID hpke.KEMID, kdfID hp
 	issuerKeyID := sha256.Sum256(issuerKeyEnc)
 
 	return originEncryptionTestVector{
-		kemID:               kemID,
-		kdfID:               kdfID,
-		aeadID:              aeadID,
-		nameKeySeed:         ikm,
-		nameKey:             nameKey,
-		issuerKeyID:         issuerKeyID[:],
-		tokenType:           RateLimitedTokenType,
-		indexRequest:        indexRequest,
-		tokenKeyID:          tokenKeyIDBuf[0],
-		blindMessage:        blindMessage,
-		originName:          originName,
-		encryptedOriginName: encryptedName,
+		kemID:                 kemID,
+		kdfID:                 kdfID,
+		aeadID:                aeadID,
+		nameKeySeed:           ikm,
+		nameKey:               nameKey,
+		issuerKeyID:           issuerKeyID[:],
+		tokenType:             RateLimitedTokenType,
+		indexRequest:          indexRequest,
+		tokenKeyID:            tokenKeyIDBuf[0],
+		blindMessage:          blindMessage,
+		originName:            originName,
+		encryptedTokenRequest: encryptedTokenRequest,
+		encapSecret:           secret,
 	}
 }
 
@@ -368,13 +373,14 @@ func verifyOriginEncryptionTestVector(t *testing.T, vector originEncryptionTestV
 		t.Fatal(err)
 	}
 
-	originName, err := decryptOriginName(privateNameKey, vector.tokenKeyID, vector.blindMessage, vector.indexRequest, vector.encryptedOriginName)
+	originTokenRequest, _, err := decryptOriginTokenRequest(privateNameKey, vector.tokenKeyID, vector.encryptedTokenRequest)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if originName != vector.originName {
-		t.Fatal("origin decryption mismatch")
+	unpaddedOriginName := unpadOriginName(originTokenRequest.paddedOrigin)
+	if unpaddedOriginName != vector.originName {
+		t.Fatalf("origin decryption mismatch: got %s, expected %s", unpaddedOriginName, vector.originName)
 	}
 }
 

@@ -20,6 +20,52 @@ import (
 	"github.com/cloudflare/pat-go/ecdsa"
 )
 
+var (
+	labelResponseKey   = "key"
+	labelResponseNonce = "nonce"
+)
+
+type OriginTokenRequest struct {
+	raw          []byte
+	blindedMsg   []byte
+	requestKey   []byte
+	paddedOrigin []byte
+}
+
+func (r *OriginTokenRequest) Marshal() []byte {
+	if r.raw != nil {
+		return r.raw
+	}
+
+	b := cryptobyte.NewBuilder(nil)
+	b.AddBytes(r.blindedMsg)
+	b.AddBytes(r.requestKey)
+	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
+		b.AddBytes([]byte(r.paddedOrigin))
+	})
+
+	r.raw = b.BytesOrPanic()
+	return r.raw
+}
+
+func (r *OriginTokenRequest) Unmarshal(data []byte) bool {
+	s := cryptobyte.String(data)
+
+	if !s.ReadBytes(&r.blindedMsg, 256) ||
+		!s.ReadBytes(&r.requestKey, 49) {
+		return false
+	}
+
+	var paddedOriginName cryptobyte.String
+	if !s.ReadUint16LengthPrefixed(&paddedOriginName) {
+		return false
+	}
+	r.paddedOrigin = make([]byte, len(paddedOriginName))
+	copy(r.paddedOrigin, paddedOriginName)
+
+	return true
+}
+
 func computeIndex(clientKey, indexKey []byte) ([]byte, error) {
 	hkdf := hkdf.New(sha512.New384, indexKey, clientKey, []byte("anon_issuer_origin_id"))
 	clientOriginIndex := make([]byte, crypto.SHA384.Size())
@@ -93,13 +139,13 @@ func unpadOriginName(paddedOriginName []byte) string {
 }
 
 // https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-encrypting-origin-names
-func encryptOriginName(nameKey PublicNameKey, tokenKeyID uint8, blindedMessage []byte, requestKey []byte, originName string) ([]byte, []byte, error) {
+func encryptOriginTokenRequest(nameKey PublicNameKey, tokenKeyID uint8, blindedMessage []byte, requestKey []byte, originName string) ([]byte, []byte, []byte, error) {
 	issuerKeyEnc := nameKey.Marshal()
 	issuerKeyID := sha256.Sum256(issuerKeyEnc)
 
 	enc, context, err := hpke.SetupBaseS(nameKey.suite, rand.Reader, nameKey.publicKey, []byte("TokenRequest"))
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	b := cryptobyte.NewBuilder(nil)
@@ -109,21 +155,31 @@ func encryptOriginName(nameKey PublicNameKey, tokenKeyID uint8, blindedMessage [
 	b.AddUint16(uint16(nameKey.suite.AEAD.ID()))
 	b.AddUint16(RateLimitedTokenType)
 	b.AddUint8(tokenKeyID)
-	b.AddBytes(blindedMessage)
-	b.AddBytes(requestKey)
 	b.AddBytes(issuerKeyID[:])
 
-	aad := b.BytesOrPanic()
-	ct := context.Seal(aad, padOriginName(originName))
-	encryptedOriginName := append(enc, ct...)
+	tokenRequest := OriginTokenRequest{
+		blindedMsg:   blindedMessage,
+		requestKey:   requestKey,
+		paddedOrigin: padOriginName(originName),
+	}
+	input := tokenRequest.Marshal()
 
-	return issuerKeyID[:], encryptedOriginName, nil
+	aad := b.BytesOrPanic()
+	ct := context.Seal(aad, input)
+	encryptedTokenRequest := append(enc, ct...)
+
+	secret := context.Export([]byte("OriginTokenResponse"), nameKey.suite.AEAD.KeySize())
+
+	return issuerKeyID[:], encryptedTokenRequest, secret, nil
 }
 
 type RateLimitedTokenRequestState struct {
 	tokenInput        []byte
 	blindedRequestKey []byte
 	request           *RateLimitedTokenRequest
+	encapSecret       []byte
+	encapEnc          []byte
+	nameKey           PublicNameKey
 	verificationKey   *rsa.PublicKey
 	verifier          blindsign.VerifierState
 }
@@ -136,7 +192,33 @@ func (s RateLimitedTokenRequestState) BlindedRequestKey() []byte {
 	return s.blindedRequestKey
 }
 
-func (s RateLimitedTokenRequestState) FinalizeToken(blindSignature []byte) (Token, error) {
+func (s RateLimitedTokenRequestState) FinalizeToken(encryptedtokenResponse []byte) (Token, error) {
+	// response_nonce = random(max(Nn, Nk)), taken from the encapsualted response
+	responseNonceLen := max(s.nameKey.suite.AEAD.KeySize(), s.nameKey.suite.AEAD.NonceSize())
+
+	// salt = concat(enc, response_nonce)
+	salt := append(s.encapEnc, encryptedtokenResponse[:responseNonceLen]...)
+
+	// prk = Extract(salt, secret)
+	prk := s.nameKey.suite.KDF.Extract(salt, s.encapSecret)
+
+	// aead_key = Expand(prk, "key", Nk)
+	key := s.nameKey.suite.KDF.Expand(prk, []byte(labelResponseKey), s.nameKey.suite.AEAD.KeySize())
+
+	// aead_nonce = Expand(prk, "nonce", Nn)
+	nonce := s.nameKey.suite.KDF.Expand(prk, []byte(labelResponseNonce), s.nameKey.suite.AEAD.NonceSize())
+
+	cipher, err := s.nameKey.suite.AEAD.New(key)
+	if err != nil {
+		return Token{}, err
+	}
+
+	// reponse, error = Open(aead_key, aead_nonce, "", ct)
+	blindSignature, err := cipher.Open(nil, nonce, encryptedtokenResponse[responseNonceLen:], nil)
+	if err != nil {
+		return Token{}, err
+	}
+
 	signature, err := s.verifier.Finalize(blindSignature)
 	if err != nil {
 		return Token{}, err
@@ -197,7 +279,7 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 		return RateLimitedTokenRequestState{}, err
 	}
 
-	nameKeyID, encryptedOriginName, err := encryptOriginName(nameKey, tokenKeyID[0], blindedMessage, blindedPublicKeyEnc, originName)
+	nameKeyID, encryptedTokenRequest, secret, err := encryptOriginTokenRequest(nameKey, tokenKeyID[0], blindedMessage, blindedPublicKeyEnc, originName)
 	if err != nil {
 		return RateLimitedTokenRequestState{}, err
 	}
@@ -205,10 +287,8 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 	b := cryptobyte.NewBuilder(nil)
 	b.AddUint16(RateLimitedTokenType)
 	b.AddUint8(tokenKeyID[0])
-	b.AddBytes(blindedMessage)
-	b.AddBytes(blindedPublicKeyEnc)
 	b.AddBytes(nameKeyID)
-	b.AddBytes(encryptedOriginName)
+	b.AddBytes(encryptedTokenRequest)
 	message := b.BytesOrPanic()
 
 	hash := sha512.New384()
@@ -227,18 +307,19 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 	signature := append(rEnc, sEnc...)
 
 	request := &RateLimitedTokenRequest{
-		tokenKeyID:          tokenKeyID[0],
-		blindedReq:          blindedMessage,
-		requestKey:          blindedPublicKeyEnc,
-		nameKeyID:           nameKeyID,
-		encryptedOriginName: encryptedOriginName,
-		signature:           signature,
+		tokenKeyID:            tokenKeyID[0],
+		nameKeyID:             nameKeyID,
+		encryptedTokenRequest: encryptedTokenRequest,
+		signature:             signature,
 	}
 
 	requestState := RateLimitedTokenRequestState{
 		tokenInput:        tokenInput,
 		blindedRequestKey: blindedPublicKeyEnc,
 		request:           request,
+		encapSecret:       secret,
+		encapEnc:          encryptedTokenRequest[0:nameKey.suite.KEM.PublicKeySize()],
+		nameKey:           nameKey,
 		verifier:          verifierState,
 		verificationKey:   tokenKey,
 	}
@@ -318,7 +399,14 @@ func (i *RateLimitedIssuer) TokenKeyID() []byte {
 	return keyID[:]
 }
 
-func decryptOriginName(nameKey PrivateNameKey, tokenKeyID uint8, blindedMessage []byte, requestKey []byte, encryptedOriginName []byte) (string, error) {
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func decryptOriginTokenRequest(nameKey PrivateNameKey, tokenKeyID uint8, encryptedTokenRequest []byte) (OriginTokenRequest, []byte, error) {
 	issuerConfigID := sha256.Sum256(nameKey.Public().Marshal())
 
 	// Decrypt the origin name
@@ -329,33 +417,40 @@ func decryptOriginName(nameKey PrivateNameKey, tokenKeyID uint8, blindedMessage 
 	b.AddUint16(uint16(nameKey.suite.AEAD.ID()))
 	b.AddUint16(RateLimitedTokenType)
 	b.AddUint8(tokenKeyID)
-	b.AddBytes(blindedMessage)
-	b.AddBytes(requestKey)
 	b.AddBytes(issuerConfigID[:])
 	aad := b.BytesOrPanic()
 
-	enc := encryptedOriginName[0:nameKey.suite.KEM.PublicKeySize()]
-	ct := encryptedOriginName[nameKey.suite.KEM.PublicKeySize():]
+	enc := encryptedTokenRequest[0:nameKey.suite.KEM.PublicKeySize()]
+	ct := encryptedTokenRequest[nameKey.suite.KEM.PublicKeySize():]
 
 	context, err := hpke.SetupBaseR(nameKey.suite, nameKey.privateKey, enc, []byte("TokenRequest"))
 	if err != nil {
-		return "", err
+		return OriginTokenRequest{}, nil, err
 	}
 
-	originName, err := context.Open(aad, ct)
+	tokenRequestEnc, err := context.Open(aad, ct)
 	if err != nil {
-		return "", err
+		return OriginTokenRequest{}, nil, err
 	}
 
-	return unpadOriginName(originName), err
+	tokenRequest := &OriginTokenRequest{}
+	if !tokenRequest.Unmarshal(tokenRequestEnc) {
+		return OriginTokenRequest{}, nil, err
+	}
+
+	secret := context.Export([]byte("OriginTokenResponse"), nameKey.suite.AEAD.KeySize())
+
+	return *tokenRequest, secret, err
 }
 
 func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byte, error) {
 	// Recover and validate the origin name
-	originName, err := decryptOriginName(i.nameKey, req.tokenKeyID, req.blindedReq, req.requestKey, req.encryptedOriginName)
+	originTokenRequest, secret, err := decryptOriginTokenRequest(i.nameKey, req.tokenKeyID, req.encryptedTokenRequest)
 	if err != nil {
 		return nil, nil, err
 	}
+
+	originName := unpadOriginName(originTokenRequest.paddedOrigin)
 
 	originIndexKey, ok := i.originIndexKeys[originName]
 	if !ok {
@@ -363,7 +458,7 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 	}
 
 	// XXX(caw): factor out functionality above, and also check the keyID
-	x, y := elliptic.UnmarshalCompressed(i.curve, req.requestKey)
+	x, y := elliptic.UnmarshalCompressed(i.curve, originTokenRequest.requestKey)
 	requestKey := &ecdsa.PublicKey{
 		i.curve, x, y,
 	}
@@ -376,10 +471,8 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 	b := cryptobyte.NewBuilder(nil)
 	b.AddUint16(RateLimitedTokenType)
 	b.AddUint8(req.tokenKeyID)
-	b.AddBytes(req.blindedReq)
-	b.AddBytes(req.requestKey)
 	b.AddBytes(req.nameKeyID)
-	b.AddBytes(req.encryptedOriginName)
+	b.AddBytes(req.encryptedTokenRequest)
 	message := b.BytesOrPanic()
 
 	hash := sha512.New384()
@@ -400,20 +493,52 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 
 	// Blinded signature
 	signer := blindrsa.NewRSASigner(i.tokenKey)
-	blindSignature, err := signer.BlindSign(req.blindedReq)
+	blindSignature, err := signer.BlindSign(originTokenRequest.blindedMsg)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return blindSignature, blindedRequestKeyEnc, nil
+	// Encrypt the response back to the client
+	// XXX(caw): pull out into subroutine and clean up with the decryption path above
+	responseNonceLen := max(i.nameKey.suite.AEAD.KeySize(), i.nameKey.suite.AEAD.NonceSize())
+	responseNonce := make([]byte, responseNonceLen)
+	_, err = rand.Read(responseNonce)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// salt = concat(enc, response_nonce)
+	enc := req.encryptedTokenRequest[0:i.nameKey.suite.KEM.PublicKeySize()]
+	salt := append(append(enc, responseNonce...))
+
+	// prk = Extract(salt, secret)
+	prk := i.nameKey.suite.KDF.Extract(salt, secret)
+
+	// aead_key = Expand(prk, "key", Nk)
+	key := i.nameKey.suite.KDF.Expand(prk, []byte(labelResponseKey), i.nameKey.suite.AEAD.KeySize())
+
+	// aead_nonce = Expand(prk, "nonce", Nn)
+	nonce := i.nameKey.suite.KDF.Expand(prk, []byte(labelResponseNonce), i.nameKey.suite.AEAD.NonceSize())
+
+	// ct = Seal(aead_key, aead_nonce, "", response)
+	cipher, err := i.nameKey.suite.AEAD.New(key)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	encryptedTokenResponse := append(responseNonce, cipher.Seal(nil, nonce, blindSignature, nil)...)
+
+	return encryptedTokenResponse, blindedRequestKeyEnc, nil
 }
 
 func (i RateLimitedIssuer) EvaluateWithoutCheck(req *RateLimitedTokenRequest) ([]byte, []byte, error) {
 	// Recover and validate the origin name
-	originName, err := decryptOriginName(i.nameKey, req.tokenKeyID, req.blindedReq, req.requestKey, req.encryptedOriginName)
+	originTokenRequest, secret, err := decryptOriginTokenRequest(i.nameKey, req.tokenKeyID, req.encryptedTokenRequest)
 	if err != nil {
 		return nil, nil, err
 	}
+
+	originName := unpadOriginName(originTokenRequest.paddedOrigin)
 
 	originIndexKey, ok := i.originIndexKeys[string(originName)]
 	if !ok {
@@ -421,7 +546,7 @@ func (i RateLimitedIssuer) EvaluateWithoutCheck(req *RateLimitedTokenRequest) ([
 	}
 
 	// Blinded key
-	x, y := elliptic.UnmarshalCompressed(i.curve, req.requestKey)
+	x, y := elliptic.UnmarshalCompressed(i.curve, originTokenRequest.requestKey)
 	requestKey := &ecdsa.PublicKey{
 		i.curve, x, y,
 	}
@@ -433,10 +558,38 @@ func (i RateLimitedIssuer) EvaluateWithoutCheck(req *RateLimitedTokenRequest) ([
 
 	// Blinded signature
 	signer := blindrsa.NewRSASigner(i.tokenKey)
-	blindSignature, err := signer.BlindSign(req.blindedReq)
+	blindSignature, err := signer.BlindSign(originTokenRequest.blindedMsg)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return blindSignature, blindedRequestKeyEnc, nil
+	// Encrypt the response back to the client
+	responseNonceLen := max(i.nameKey.suite.AEAD.KeySize(), i.nameKey.suite.AEAD.NonceSize())
+	responseNonce := make([]byte, responseNonceLen)
+	_, err = rand.Read(responseNonce)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// salt = concat(enc, response_nonce)
+	enc := req.encryptedTokenRequest[0:i.nameKey.suite.KEM.PublicKeySize()]
+	salt := append(append(enc, responseNonce...))
+
+	// prk = Extract(salt, secret)
+	prk := i.nameKey.suite.KDF.Extract(salt, secret)
+
+	// aead_key = Expand(prk, "key", Nk)
+	key := i.nameKey.suite.KDF.Expand(prk, []byte(labelResponseKey), i.nameKey.suite.AEAD.KeySize())
+
+	// aead_nonce = Expand(prk, "nonce", Nn)
+	nonce := i.nameKey.suite.KDF.Expand(prk, []byte(labelResponseNonce), i.nameKey.suite.AEAD.NonceSize())
+
+	// ct = Seal(aead_key, aead_nonce, "", response)
+	cipher, err := i.nameKey.suite.AEAD.New(key)
+	if err != nil {
+		return nil, nil, err
+	}
+	encryptedTokenResponse := cipher.Seal(nil, nonce, blindSignature, nil)
+
+	return encryptedTokenResponse, blindedRequestKeyEnc, nil
 }

@@ -42,7 +42,7 @@ if "basic-private-issuance" in sys.argv[1]:
 
 if "origin-encryption-test-vectors.json" in sys.argv[1]:
     ordered_keys = [
-        "origin_name", "kem_id", "kdf_id", "aead_id", "origin_name_key_seed", "origin_name_key", "token_type", "token_key_id", "blinded_msg", "request_key", "origin_name_key_id", "encrypted_origin_name"
+        "origin_name", "kem_id", "kdf_id", "aead_id", "origin_name_key_seed", "origin_name_key", "token_type", "token_key_id", "blinded_msg", "request_key", "issuer_encap_key_id", "encrypted_token_reqest"
     ]
     format_vector(ordered_keys, sys.argv[1])
 
