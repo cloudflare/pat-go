@@ -206,8 +206,8 @@ type rawOriginEncryptionTestVector struct {
 	KEMID                 hpke.KEMID  `json:"kem_id"`
 	KDFID                 hpke.KDFID  `json:"kdf_id"`
 	AEADID                hpke.AEADID `json:"aead_id"`
-	OriginNameKeySeed     string      `json:"origin_name_key_seed"`
-	OriginNameKey         string      `json:"origin_name_key"`
+	OriginNameKeySeed     string      `json:"issuer_encap_key_seed"`
+	OriginNameKey         string      `json:"issuer_encap_key"`
 	TokenType             uint16      `json:"token_type"`
 	OriginNameKeyID       string      `json:"issuer_encap_key_id"`
 	IndexRequest          string      `json:"request_key"`
