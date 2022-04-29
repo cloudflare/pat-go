@@ -24,7 +24,7 @@ import (
 	"github.com/cloudflare/pat-go/ed25519"
 )
 
-// 4096-bit RSA private key
+// 2048-bit RSA private key
 const testTokenPrivateKey = `
 -----BEGIN RSA PRIVATE KEY-----
 MIIEowIBAAKCAQEAyxrta2qV9bHOATpM/KsluUsuZKIwNOQlCn6rQ8DfOowSmTrx
