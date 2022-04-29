@@ -175,6 +175,7 @@ func encryptOriginTokenRequest(nameKey PublicNameKey, tokenKeyID uint8, blindedM
 
 type RateLimitedTokenRequestState struct {
 	tokenInput        []byte
+	clientKey         []byte
 	blindedRequestKey []byte
 	request           *RateLimitedTokenRequest
 	encapSecret       []byte
@@ -188,8 +189,12 @@ func (s RateLimitedTokenRequestState) Request() *RateLimitedTokenRequest {
 	return s.request
 }
 
-func (s RateLimitedTokenRequestState) BlindedRequestKey() []byte {
+func (s RateLimitedTokenRequestState) RequestKey() []byte {
 	return s.blindedRequestKey
+}
+
+func (s RateLimitedTokenRequestState) ClientKey() []byte {
+	return s.clientKey
 }
 
 func (s RateLimitedTokenRequestState) FinalizeToken(encryptedtokenResponse []byte) (Token, error) {
@@ -257,6 +262,8 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 		return RateLimitedTokenRequestState{}, err
 	}
 
+	clientKeyEnc := elliptic.MarshalCompressed(c.curve, c.secretKey.PublicKey.X, c.secretKey.PublicKey.Y)
+
 	blindedPublicKey, err := ecdsa.BlindPublicKey(c.curve, &c.secretKey.PublicKey, blindKey)
 	if err != nil {
 		return RateLimitedTokenRequestState{}, err
@@ -315,6 +322,7 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 
 	requestState := RateLimitedTokenRequestState{
 		tokenInput:        tokenInput,
+		clientKey:         clientKeyEnc,
 		blindedRequestKey: blindedPublicKeyEnc,
 		request:           request,
 		encapSecret:       secret,
