@@ -25,14 +25,14 @@ var (
 	labelResponseNonce = "nonce"
 )
 
-type OriginTokenRequest struct {
+type InnerTokenRequest struct {
 	raw          []byte
 	blindedMsg   []byte
 	requestKey   []byte
 	paddedOrigin []byte
 }
 
-func (r *OriginTokenRequest) Marshal() []byte {
+func (r *InnerTokenRequest) Marshal() []byte {
 	if r.raw != nil {
 		return r.raw
 	}
@@ -48,7 +48,7 @@ func (r *OriginTokenRequest) Marshal() []byte {
 	return r.raw
 }
 
-func (r *OriginTokenRequest) Unmarshal(data []byte) bool {
+func (r *InnerTokenRequest) Unmarshal(data []byte) bool {
 	s := cryptobyte.String(data)
 
 	if !s.ReadBytes(&r.blindedMsg, 256) ||
@@ -157,7 +157,7 @@ func encryptOriginTokenRequest(nameKey PublicNameKey, tokenKeyID uint8, blindedM
 	b.AddUint8(tokenKeyID)
 	b.AddBytes(issuerKeyID[:])
 
-	tokenRequest := OriginTokenRequest{
+	tokenRequest := InnerTokenRequest{
 		blindedMsg:   blindedMessage,
 		requestKey:   requestKey,
 		paddedOrigin: padOriginName(originName),
@@ -168,7 +168,7 @@ func encryptOriginTokenRequest(nameKey PublicNameKey, tokenKeyID uint8, blindedM
 	ct := context.Seal(aad, input)
 	encryptedTokenRequest := append(enc, ct...)
 
-	secret := context.Export([]byte("OriginTokenResponse"), nameKey.suite.AEAD.KeySize())
+	secret := context.Export([]byte("TokenResponse"), nameKey.suite.AEAD.KeySize())
 
 	return issuerKeyID[:], encryptedTokenRequest, secret, nil
 }
@@ -414,7 +414,7 @@ func max(a, b int) int {
 	return b
 }
 
-func decryptOriginTokenRequest(nameKey PrivateNameKey, tokenKeyID uint8, encryptedTokenRequest []byte) (OriginTokenRequest, []byte, error) {
+func decryptOriginTokenRequest(nameKey PrivateNameKey, tokenKeyID uint8, encryptedTokenRequest []byte) (InnerTokenRequest, []byte, error) {
 	issuerConfigID := sha256.Sum256(nameKey.Public().Marshal())
 
 	// Decrypt the origin name
@@ -433,20 +433,20 @@ func decryptOriginTokenRequest(nameKey PrivateNameKey, tokenKeyID uint8, encrypt
 
 	context, err := hpke.SetupBaseR(nameKey.suite, nameKey.privateKey, enc, []byte("TokenRequest"))
 	if err != nil {
-		return OriginTokenRequest{}, nil, err
+		return InnerTokenRequest{}, nil, err
 	}
 
 	tokenRequestEnc, err := context.Open(aad, ct)
 	if err != nil {
-		return OriginTokenRequest{}, nil, err
+		return InnerTokenRequest{}, nil, err
 	}
 
-	tokenRequest := &OriginTokenRequest{}
+	tokenRequest := &InnerTokenRequest{}
 	if !tokenRequest.Unmarshal(tokenRequestEnc) {
-		return OriginTokenRequest{}, nil, err
+		return InnerTokenRequest{}, nil, err
 	}
 
-	secret := context.Export([]byte("OriginTokenResponse"), nameKey.suite.AEAD.KeySize())
+	secret := context.Export([]byte("TokenResponse"), nameKey.suite.AEAD.KeySize())
 
 	return *tokenRequest, secret, err
 }
