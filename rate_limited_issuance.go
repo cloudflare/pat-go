@@ -457,15 +457,15 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 	if err != nil {
 		return nil, nil, err
 	}
-
 	originName := unpadOriginName(originTokenRequest.paddedOrigin)
 
+	// Check to see if it's a registered origin
 	originIndexKey, ok := i.originIndexKeys[originName]
 	if !ok {
 		return nil, nil, fmt.Errorf("Unknown origin: %s", originName)
 	}
 
-	// XXX(caw): factor out functionality above, and also check the keyID
+	// Deserialize the request key
 	x, y := elliptic.UnmarshalCompressed(i.curve, originTokenRequest.requestKey)
 	requestKey := &ecdsa.PublicKey{
 		i.curve, x, y,
@@ -492,22 +492,21 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 		return nil, nil, fmt.Errorf("Invalid request signature")
 	}
 
-	// Blinded key
+	// Compute the request key
 	blindedRequestKey, err := ecdsa.BlindPublicKey(i.curve, requestKey, originIndexKey)
 	if err != nil {
 		return nil, nil, err
 	}
 	blindedRequestKeyEnc := elliptic.MarshalCompressed(i.curve, blindedRequestKey.X, blindedRequestKey.Y)
 
-	// Blinded signature
+	// Compute the blinded signature
 	signer := blindrsa.NewRSASigner(i.tokenKey)
 	blindSignature, err := signer.BlindSign(originTokenRequest.blindedMsg)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Encrypt the response back to the client
-	// XXX(caw): pull out into subroutine and clean up with the decryption path above
+	// Generate a fresh nonce for encrypting the response back to the client
 	responseNonceLen := max(i.nameKey.suite.AEAD.KeySize(), i.nameKey.suite.AEAD.NonceSize())
 	responseNonce := make([]byte, responseNonceLen)
 	_, err = rand.Read(responseNonce)
@@ -515,89 +514,19 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 		return nil, nil, err
 	}
 
-	// salt = concat(enc, response_nonce)
 	enc := req.encryptedTokenRequest[0:i.nameKey.suite.KEM.PublicKeySize()]
 	salt := append(append(enc, responseNonce...))
 
-	// prk = Extract(salt, secret)
+	// Derive encryption secrets
 	prk := i.nameKey.suite.KDF.Extract(salt, secret)
-
-	// aead_key = Expand(prk, "key", Nk)
 	key := i.nameKey.suite.KDF.Expand(prk, []byte(labelResponseKey), i.nameKey.suite.AEAD.KeySize())
-
-	// aead_nonce = Expand(prk, "nonce", Nn)
 	nonce := i.nameKey.suite.KDF.Expand(prk, []byte(labelResponseNonce), i.nameKey.suite.AEAD.NonceSize())
 
-	// ct = Seal(aead_key, aead_nonce, "", response)
 	cipher, err := i.nameKey.suite.AEAD.New(key)
 	if err != nil {
 		return nil, nil, err
 	}
-
 	encryptedTokenResponse := append(responseNonce, cipher.Seal(nil, nonce, blindSignature, nil)...)
-
-	return encryptedTokenResponse, blindedRequestKeyEnc, nil
-}
-
-func (i RateLimitedIssuer) EvaluateWithoutCheck(req *RateLimitedTokenRequest) ([]byte, []byte, error) {
-	// Recover and validate the origin name
-	originTokenRequest, secret, err := decryptOriginTokenRequest(i.nameKey, req.tokenKeyID, req.encryptedTokenRequest)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	originName := unpadOriginName(originTokenRequest.paddedOrigin)
-
-	originIndexKey, ok := i.originIndexKeys[string(originName)]
-	if !ok {
-		return nil, nil, fmt.Errorf("Unknown origin: %s", string(originName))
-	}
-
-	// Blinded key
-	x, y := elliptic.UnmarshalCompressed(i.curve, originTokenRequest.requestKey)
-	requestKey := &ecdsa.PublicKey{
-		i.curve, x, y,
-	}
-	blindedRequestKey, err := ecdsa.BlindPublicKey(i.curve, requestKey, originIndexKey)
-	if err != nil {
-		return nil, nil, err
-	}
-	blindedRequestKeyEnc := elliptic.MarshalCompressed(i.curve, blindedRequestKey.X, blindedRequestKey.Y)
-
-	// Blinded signature
-	signer := blindrsa.NewRSASigner(i.tokenKey)
-	blindSignature, err := signer.BlindSign(originTokenRequest.blindedMsg)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Encrypt the response back to the client
-	responseNonceLen := max(i.nameKey.suite.AEAD.KeySize(), i.nameKey.suite.AEAD.NonceSize())
-	responseNonce := make([]byte, responseNonceLen)
-	_, err = rand.Read(responseNonce)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// salt = concat(enc, response_nonce)
-	enc := req.encryptedTokenRequest[0:i.nameKey.suite.KEM.PublicKeySize()]
-	salt := append(append(enc, responseNonce...))
-
-	// prk = Extract(salt, secret)
-	prk := i.nameKey.suite.KDF.Extract(salt, secret)
-
-	// aead_key = Expand(prk, "key", Nk)
-	key := i.nameKey.suite.KDF.Expand(prk, []byte(labelResponseKey), i.nameKey.suite.AEAD.KeySize())
-
-	// aead_nonce = Expand(prk, "nonce", Nn)
-	nonce := i.nameKey.suite.KDF.Expand(prk, []byte(labelResponseNonce), i.nameKey.suite.AEAD.NonceSize())
-
-	// ct = Seal(aead_key, aead_nonce, "", response)
-	cipher, err := i.nameKey.suite.AEAD.New(key)
-	if err != nil {
-		return nil, nil, err
-	}
-	encryptedTokenResponse := cipher.Seal(nil, nonce, blindSignature, nil)
 
 	return encryptedTokenResponse, blindedRequestKeyEnc, nil
 }
