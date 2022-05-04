@@ -314,10 +314,10 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 	signature := append(rEnc, sEnc...)
 
 	request := &RateLimitedTokenRequest{
-		tokenKeyID:            tokenKeyID[0],
-		nameKeyID:             nameKeyID,
-		encryptedTokenRequest: encryptedTokenRequest,
-		signature:             signature,
+		TokenKeyID:            tokenKeyID[0],
+		NameKeyID:             nameKeyID,
+		EncryptedTokenRequest: encryptedTokenRequest,
+		Signature:             signature,
 	}
 
 	requestState := RateLimitedTokenRequestState{
@@ -453,7 +453,7 @@ func decryptOriginTokenRequest(nameKey PrivateNameKey, tokenKeyID uint8, encrypt
 
 func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byte, error) {
 	// Recover and validate the origin name
-	originTokenRequest, secret, err := decryptOriginTokenRequest(i.nameKey, req.tokenKeyID, req.encryptedTokenRequest)
+	originTokenRequest, secret, err := decryptOriginTokenRequest(i.nameKey, req.TokenKeyID, req.EncryptedTokenRequest)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -472,15 +472,15 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 	}
 
 	scalarLen := (i.curve.Params().Params().BitSize + 7) / 8
-	r := new(big.Int).SetBytes(req.signature[:scalarLen])
-	s := new(big.Int).SetBytes(req.signature[scalarLen:])
+	r := new(big.Int).SetBytes(req.Signature[:scalarLen])
+	s := new(big.Int).SetBytes(req.Signature[scalarLen:])
 
 	// Verify the request signature
 	b := cryptobyte.NewBuilder(nil)
 	b.AddUint16(RateLimitedTokenType)
-	b.AddUint8(req.tokenKeyID)
-	b.AddBytes(req.nameKeyID)
-	b.AddBytes(req.encryptedTokenRequest)
+	b.AddUint8(req.TokenKeyID)
+	b.AddBytes(req.NameKeyID)
+	b.AddBytes(req.EncryptedTokenRequest)
 	message := b.BytesOrPanic()
 
 	hash := sha512.New384()
@@ -514,7 +514,7 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 		return nil, nil, err
 	}
 
-	enc := req.encryptedTokenRequest[0:i.nameKey.suite.KEM.PublicKeySize()]
+	enc := req.EncryptedTokenRequest[0:i.nameKey.suite.KEM.PublicKeySize()]
 	salt := append(append(enc, responseNonce...))
 
 	// Derive encryption secrets

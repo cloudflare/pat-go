@@ -83,8 +83,8 @@ func (c BasicPrivateClient) CreateTokenRequest(challenge, nonce []byte, tokenKey
 		return BasicPrivateTokenRequestState{}, err
 	}
 	request := &BasicPrivateTokenRequest{
-		tokenKeyID: tokenKeyID[0],
-		blindedReq: encRequest,
+		TokenKeyID: tokenKeyID[0],
+		BlindedReq: encRequest,
 	}
 
 	requestState := BasicPrivateTokenRequestState{
@@ -127,8 +127,8 @@ func (c BasicPrivateClient) CreateTokenRequestWithBlind(challenge, nonce []byte,
 		return BasicPrivateTokenRequestState{}, err
 	}
 	request := &BasicPrivateTokenRequest{
-		tokenKeyID: tokenKeyID[0],
-		blindedReq: encRequest,
+		TokenKeyID: tokenKeyID[0],
+		BlindedReq: encRequest,
 	}
 
 	requestState := BasicPrivateTokenRequestState{
@@ -169,7 +169,7 @@ func (i BasicPrivateIssuer) Evaluate(req *BasicPrivateTokenRequest) ([]byte, err
 	server := oprf.NewVerifiableServer(oprf.SuiteP384, i.tokenKey)
 
 	e := group.P384.NewElement()
-	err := e.UnmarshalBinary(req.blindedReq)
+	err := e.UnmarshalBinary(req.BlindedReq)
 	if err != nil {
 		return nil, err
 	}

@@ -79,8 +79,8 @@ func (c BasicPublicClient) CreateTokenRequest(challenge, nonce []byte, tokenKeyI
 	}
 
 	request := &BasicPublicTokenRequest{
-		tokenKeyID: tokenKeyID[0],
-		blindedReq: blindedMessage,
+		TokenKeyID: tokenKeyID[0],
+		BlindedReq: blindedMessage,
 	}
 
 	requestState := BasicPublicTokenRequestState{
@@ -111,8 +111,8 @@ func (c BasicPublicClient) CreateTokenRequestWithBlind(challenge, nonce []byte, 
 	}
 
 	request := &BasicPublicTokenRequest{
-		tokenKeyID: tokenKeyID[0],
-		blindedReq: blindedMessage,
+		TokenKeyID: tokenKeyID[0],
+		BlindedReq: blindedMessage,
 	}
 
 	requestState := BasicPublicTokenRequestState{
@@ -151,7 +151,7 @@ func (i *BasicPublicIssuer) TokenKeyID() []byte {
 func (i BasicPublicIssuer) Evaluate(req *BasicPublicTokenRequest) ([]byte, error) {
 	// Blinded signature
 	signer := blindrsa.NewRSASigner(i.tokenKey)
-	blindSignature, err := signer.BlindSign(req.blindedReq)
+	blindSignature, err := signer.BlindSign(req.BlindedReq)
 	if err != nil {
 		return nil, err
 	}

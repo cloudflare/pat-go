@@ -13,8 +13,8 @@ type TokenRequest interface {
 
 type BasicPrivateTokenRequest struct {
 	raw        []byte
-	tokenKeyID uint8
-	blindedReq []byte // 48 bytes
+	TokenKeyID uint8
+	BlindedReq []byte // 48 bytes
 }
 
 func (r BasicPrivateTokenRequest) Type() uint16 {
@@ -22,8 +22,8 @@ func (r BasicPrivateTokenRequest) Type() uint16 {
 }
 
 func (r BasicPrivateTokenRequest) Equal(r2 BasicPrivateTokenRequest) bool {
-	if r.tokenKeyID == r2.tokenKeyID &&
-		bytes.Equal(r.blindedReq, r2.blindedReq) {
+	if r.TokenKeyID == r2.TokenKeyID &&
+		bytes.Equal(r.BlindedReq, r2.BlindedReq) {
 		return true
 	}
 	return false
@@ -36,8 +36,8 @@ func (r *BasicPrivateTokenRequest) Marshal() []byte {
 
 	b := cryptobyte.NewBuilder(nil)
 	b.AddUint16(BasicPrivateTokenType)
-	b.AddUint8(r.tokenKeyID)
-	b.AddBytes(r.blindedReq)
+	b.AddUint8(r.TokenKeyID)
+	b.AddBytes(r.BlindedReq)
 
 	r.raw = b.BytesOrPanic()
 	return r.raw
@@ -49,8 +49,8 @@ func (r *BasicPrivateTokenRequest) Unmarshal(data []byte) bool {
 	var tokenType uint16
 	if !s.ReadUint16(&tokenType) ||
 		tokenType != BasicPrivateTokenType ||
-		!s.ReadUint8(&r.tokenKeyID) ||
-		!s.ReadBytes(&r.blindedReq, 48) {
+		!s.ReadUint8(&r.TokenKeyID) ||
+		!s.ReadBytes(&r.BlindedReq, 48) {
 		return false
 	}
 
@@ -59,8 +59,8 @@ func (r *BasicPrivateTokenRequest) Unmarshal(data []byte) bool {
 
 type BasicPublicTokenRequest struct {
 	raw        []byte
-	tokenKeyID uint8
-	blindedReq []byte // 256 bytes
+	TokenKeyID uint8
+	BlindedReq []byte // 256 bytes
 }
 
 func (r BasicPublicTokenRequest) Type() uint16 {
@@ -68,8 +68,8 @@ func (r BasicPublicTokenRequest) Type() uint16 {
 }
 
 func (r BasicPublicTokenRequest) Equal(r2 BasicPublicTokenRequest) bool {
-	if r.tokenKeyID == r2.tokenKeyID &&
-		bytes.Equal(r.blindedReq, r2.blindedReq) {
+	if r.TokenKeyID == r2.TokenKeyID &&
+		bytes.Equal(r.BlindedReq, r2.BlindedReq) {
 		return true
 	}
 	return false
@@ -82,8 +82,8 @@ func (r *BasicPublicTokenRequest) Marshal() []byte {
 
 	b := cryptobyte.NewBuilder(nil)
 	b.AddUint16(BasicPublicTokenType)
-	b.AddUint8(r.tokenKeyID)
-	b.AddBytes(r.blindedReq)
+	b.AddUint8(r.TokenKeyID)
+	b.AddBytes(r.BlindedReq)
 
 	r.raw = b.BytesOrPanic()
 	return r.raw
@@ -95,8 +95,8 @@ func (r *BasicPublicTokenRequest) Unmarshal(data []byte) bool {
 	var tokenType uint16
 	if !s.ReadUint16(&tokenType) ||
 		tokenType != BasicPublicTokenType ||
-		!s.ReadUint8(&r.tokenKeyID) ||
-		!s.ReadBytes(&r.blindedReq, 256) {
+		!s.ReadUint8(&r.TokenKeyID) ||
+		!s.ReadBytes(&r.BlindedReq, 256) {
 		return false
 	}
 
@@ -106,10 +106,10 @@ func (r *BasicPublicTokenRequest) Unmarshal(data []byte) bool {
 // https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#section-5.3
 type RateLimitedTokenRequest struct {
 	raw                   []byte
-	tokenKeyID            uint8
-	nameKeyID             []byte // 32 bytes
-	encryptedTokenRequest []byte // 16-bit length prefixed slice
-	signature             []byte // 96 bytes
+	TokenKeyID            uint8
+	NameKeyID             []byte // 32 bytes
+	EncryptedTokenRequest []byte // 16-bit length prefixed slice
+	Signature             []byte // 96 bytes
 }
 
 func (r RateLimitedTokenRequest) Type() uint16 {
@@ -117,10 +117,10 @@ func (r RateLimitedTokenRequest) Type() uint16 {
 }
 
 func (r RateLimitedTokenRequest) Equal(r2 RateLimitedTokenRequest) bool {
-	if r.tokenKeyID == r2.tokenKeyID &&
-		bytes.Equal(r.nameKeyID, r2.nameKeyID) &&
-		bytes.Equal(r.encryptedTokenRequest, r2.encryptedTokenRequest) &&
-		bytes.Equal(r.signature, r2.signature) {
+	if r.TokenKeyID == r2.TokenKeyID &&
+		bytes.Equal(r.NameKeyID, r2.NameKeyID) &&
+		bytes.Equal(r.EncryptedTokenRequest, r2.EncryptedTokenRequest) &&
+		bytes.Equal(r.Signature, r2.Signature) {
 		return true
 	}
 
@@ -134,12 +134,12 @@ func (r *RateLimitedTokenRequest) Marshal() []byte {
 
 	b := cryptobyte.NewBuilder(nil)
 	b.AddUint16(RateLimitedTokenType)
-	b.AddUint8(r.tokenKeyID)
-	b.AddBytes(r.nameKeyID)
+	b.AddUint8(r.TokenKeyID)
+	b.AddBytes(r.NameKeyID)
 	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-		b.AddBytes(r.encryptedTokenRequest)
+		b.AddBytes(r.EncryptedTokenRequest)
 	})
-	b.AddBytes(r.signature)
+	b.AddBytes(r.Signature)
 
 	r.raw = b.BytesOrPanic()
 	return r.raw
@@ -151,8 +151,8 @@ func (r *RateLimitedTokenRequest) Unmarshal(data []byte) bool {
 	var tokenType uint16
 	if !s.ReadUint16(&tokenType) ||
 		tokenType != RateLimitedTokenType ||
-		!s.ReadUint8(&r.tokenKeyID) ||
-		!s.ReadBytes(&r.nameKeyID, 32) {
+		!s.ReadUint8(&r.TokenKeyID) ||
+		!s.ReadBytes(&r.NameKeyID, 32) {
 		return false
 	}
 
@@ -160,10 +160,10 @@ func (r *RateLimitedTokenRequest) Unmarshal(data []byte) bool {
 	if !s.ReadUint16LengthPrefixed(&encryptedTokenRequest) || encryptedTokenRequest.Empty() {
 		return false
 	}
-	r.encryptedTokenRequest = make([]byte, len(encryptedTokenRequest))
-	copy(r.encryptedTokenRequest, encryptedTokenRequest)
+	r.EncryptedTokenRequest = make([]byte, len(encryptedTokenRequest))
+	copy(r.EncryptedTokenRequest, encryptedTokenRequest)
 
-	s.ReadBytes(&r.signature, 96)
+	s.ReadBytes(&r.Signature, 96)
 	if !s.Empty() {
 		return false
 	}
