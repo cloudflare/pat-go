@@ -91,7 +91,7 @@ func (k EncapKey) Marshal() []byte {
 	return b.BytesOrPanic()
 }
 
-func UnmarshalPublicEncapKey(data []byte) (EncapKey, error) {
+func UnmarshalEncapKey(data []byte) (EncapKey, error) {
 	s := cryptobyte.String(data)
 
 	var id uint8
