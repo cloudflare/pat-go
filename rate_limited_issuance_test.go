@@ -224,7 +224,7 @@ type originEncryptionTestVector struct {
 	kdfID                 hpke.KDFID
 	aeadID                hpke.AEADID
 	nameKeySeed           []byte
-	nameKey               PrivateNameKey
+	nameKey               PrivateEncapKey
 	tokenType             uint16
 	indexRequest          []byte
 	tokenKeyID            uint8
@@ -297,7 +297,7 @@ func (etv *originEncryptionTestVector) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("Unsupported ciphersuite")
 	}
 
-	nameKey, err := CreatePrivateNameKeyFromSeed(etv.nameKeySeed)
+	nameKey, err := CreatePrivateEncapKeyFromSeed(etv.nameKeySeed)
 	if err != nil {
 		return err
 	}
@@ -316,7 +316,7 @@ func (etv *originEncryptionTestVector) UnmarshalJSON(data []byte) error {
 func generateOriginEncryptionTestVector(t *testing.T, kemID hpke.KEMID, kdfID hpke.KDFID, aeadID hpke.AEADID) originEncryptionTestVector {
 	ikm := make([]byte, 32)
 	rand.Reader.Read(ikm)
-	nameKey, err := CreatePrivateNameKeyFromSeed(ikm)
+	nameKey, err := CreatePrivateEncapKeyFromSeed(ikm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -368,7 +368,7 @@ func verifyOriginEncryptionTestVector(t *testing.T, vector originEncryptionTestV
 		return
 	}
 
-	privateNameKey, err := CreatePrivateNameKeyFromSeed(vector.nameKeySeed)
+	privateNameKey, err := CreatePrivateEncapKeyFromSeed(vector.nameKeySeed)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -139,7 +139,7 @@ func unpadOriginName(paddedOriginName []byte) string {
 }
 
 // https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-encrypting-origin-names
-func encryptOriginTokenRequest(nameKey PublicNameKey, tokenKeyID uint8, blindedMessage []byte, requestKey []byte, originName string) ([]byte, []byte, []byte, error) {
+func encryptOriginTokenRequest(nameKey EncapKey, tokenKeyID uint8, blindedMessage []byte, requestKey []byte, originName string) ([]byte, []byte, []byte, error) {
 	issuerKeyEnc := nameKey.Marshal()
 	issuerKeyID := sha256.Sum256(issuerKeyEnc)
 
@@ -180,7 +180,7 @@ type RateLimitedTokenRequestState struct {
 	request           *RateLimitedTokenRequest
 	encapSecret       []byte
 	encapEnc          []byte
-	nameKey           PublicNameKey
+	nameKey           EncapKey
 	verificationKey   *rsa.PublicKey
 	verifier          blindsign.VerifierState
 }
@@ -256,7 +256,7 @@ func (s RateLimitedTokenRequestState) FinalizeToken(encryptedtokenResponse []byt
 
 // https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-client-to-attester-request
 // https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-index-computation
-func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []byte, tokenKeyID []byte, tokenKey *rsa.PublicKey, originName string, nameKey PublicNameKey) (RateLimitedTokenRequestState, error) {
+func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []byte, tokenKeyID []byte, tokenKey *rsa.PublicKey, originName string, nameKey EncapKey) (RateLimitedTokenRequestState, error) {
 	blindKey, err := ecdsa.CreateKey(c.curve, blindKeyEnc)
 	if err != nil {
 		return RateLimitedTokenRequestState{}, err
@@ -337,7 +337,7 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 
 type RateLimitedIssuer struct {
 	curve           elliptic.Curve
-	nameKey         PrivateNameKey
+	nameKey         PrivateEncapKey
 	tokenKey        *rsa.PrivateKey
 	originIndexKeys map[string]*ecdsa.PrivateKey
 }
@@ -355,7 +355,7 @@ func NewRateLimitedIssuer(key *rsa.PrivateKey) *RateLimitedIssuer {
 		return nil
 	}
 
-	nameKey := PrivateNameKey{
+	nameKey := PrivateEncapKey{
 		id:         0x00,
 		suite:      suite,
 		publicKey:  publicKey,
@@ -370,7 +370,7 @@ func NewRateLimitedIssuer(key *rsa.PrivateKey) *RateLimitedIssuer {
 	}
 }
 
-func (i *RateLimitedIssuer) NameKey() PublicNameKey {
+func (i *RateLimitedIssuer) NameKey() EncapKey {
 	return i.nameKey.Public()
 }
 
@@ -414,7 +414,7 @@ func max(a, b int) int {
 	return b
 }
 
-func decryptOriginTokenRequest(nameKey PrivateNameKey, tokenKeyID uint8, encryptedTokenRequest []byte) (InnerTokenRequest, []byte, error) {
+func decryptOriginTokenRequest(nameKey PrivateEncapKey, tokenKeyID uint8, encryptedTokenRequest []byte) (InnerTokenRequest, []byte, error) {
 	issuerConfigID := sha256.Sum256(nameKey.Public().Marshal())
 
 	// Decrypt the origin name
