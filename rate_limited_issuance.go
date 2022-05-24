@@ -295,7 +295,9 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 	b.AddUint16(RateLimitedTokenType)
 	b.AddUint8(tokenKeyID[0])
 	b.AddBytes(nameKeyID)
-	b.AddBytes(encryptedTokenRequest)
+	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
+		b.AddBytes(encryptedTokenRequest)
+	})
 	message := b.BytesOrPanic()
 
 	hash := sha512.New384()
@@ -480,7 +482,9 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 	b.AddUint16(RateLimitedTokenType)
 	b.AddUint8(req.TokenKeyID)
 	b.AddBytes(req.NameKeyID)
-	b.AddBytes(req.EncryptedTokenRequest)
+	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
+		b.AddBytes(req.EncryptedTokenRequest)
+	})
 	message := b.BytesOrPanic()
 
 	hash := sha512.New384()
