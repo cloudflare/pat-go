@@ -8,6 +8,12 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 )
 
+var (
+	fixedKEM  = hpke.DHKEM_X25519
+	fixedKDF  = hpke.KDF_HKDF_SHA256
+	fixedAEAD = hpke.AEAD_AESGCM128
+)
+
 // https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-configuration
 type PrivateEncapKey struct {
 	id         uint8
@@ -21,7 +27,7 @@ func CreatePrivateEncapKeyFromSeed(seed []byte) (PrivateEncapKey, error) {
 		return PrivateEncapKey{}, fmt.Errorf("Invalid seed length, expected 32 bytes")
 	}
 
-	suite, err := hpke.AssembleCipherSuite(hpke.DHKEM_X25519, hpke.KDF_HKDF_SHA256, hpke.AEAD_AESGCM128)
+	suite, err := hpke.AssembleCipherSuite(fixedKEM, fixedKDF, fixedAEAD)
 	if err != nil {
 		return PrivateEncapKey{}, err
 	}
@@ -102,7 +108,7 @@ func UnmarshalEncapKey(data []byte) (EncapKey, error) {
 	}
 
 	kem := hpke.KEMID(kemID)
-	suite, err := hpke.AssembleCipherSuite(kem, hpke.KDF_HKDF_SHA256, hpke.AEAD_AESGCM128)
+	suite, err := hpke.AssembleCipherSuite(kem, fixedKDF, fixedAEAD)
 	if err != nil {
 		return EncapKey{}, fmt.Errorf("Invalid EncapKey")
 	}
