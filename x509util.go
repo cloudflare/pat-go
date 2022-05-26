@@ -70,6 +70,7 @@ func MarshalTokenKeyPSSOID(key *rsa.PublicKey) ([]byte, error) {
 				b.AddASN1(cryptobyte_asn1.Tag(0).ContextSpecific().Constructed(), func(b *cryptobyte.Builder) {
 					b.AddASN1(cryptobyte_asn1.SEQUENCE.Constructed(), func(b *cryptobyte.Builder) {
 						b.AddASN1ObjectIdentifier(oidSHA384)
+						b.AddASN1NULL()
 					})
 				})
 				b.AddASN1(cryptobyte_asn1.Tag(1).ContextSpecific().Constructed(), func(b *cryptobyte.Builder) {
@@ -77,6 +78,7 @@ func MarshalTokenKeyPSSOID(key *rsa.PublicKey) ([]byte, error) {
 						b.AddASN1ObjectIdentifier(oidPKCS1MGF)
 						b.AddASN1(cryptobyte_asn1.SEQUENCE.Constructed(), func(b *cryptobyte.Builder) {
 							b.AddASN1ObjectIdentifier(oidSHA384)
+							b.AddASN1NULL()
 						})
 					})
 				})
