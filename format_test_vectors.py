@@ -18,13 +18,13 @@ def format_vector(vector_keys, vector_fname):
 
 if "ed25519-blinding" in sys.argv[1]:
     ordered_keys = [
-        "skS", "pkS", "bk", "pkR", "message", "signature",
+        "skS", "pkS", "bk", "pkR", "message", "context", "signature",
     ]
     format_vector(ordered_keys, sys.argv[1])
 
 if "ecdsa-blinding" in sys.argv[1]:
     ordered_keys = [
-        "skS", "pkS", "bk", "pkR", "message", "signature",
+        "skS", "pkS", "bk", "pkR", "message", "context", "signature",
     ]
     format_vector(ordered_keys, sys.argv[1])
 
