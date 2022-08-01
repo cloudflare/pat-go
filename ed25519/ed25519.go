@@ -110,9 +110,11 @@ func GenerateKey(rand io.Reader) (PublicKey, PrivateKey, error) {
 	return publicKey, privateKey, nil
 }
 
-// BlindPublicKey augments the public key pair by the blind seed.
-func BlindPublicKey(publicKey PublicKey, blind []byte) (PublicKey, error) {
-	b := sha512.Sum512(blind)
+// BlindPublicKeyWithContext augments the public key pair by the blind key and context string.
+func BlindPublicKeyWithContext(publicKey PublicKey, blind []byte, context []byte) (PublicKey, error) {
+	blindContext := append(blind, 0x00)
+	blindContext = append(blindContext, context...)
+	b := sha512.Sum512(blindContext)
 	r := edwards25519.NewScalar().SetBytes(b[:32])
 
 	P, err := (&edwards25519.Point{}).SetBytes(publicKey)
@@ -126,9 +128,17 @@ func BlindPublicKey(publicKey PublicKey, blind []byte) (PublicKey, error) {
 	return blindedKey, nil
 }
 
-// UnblindPublicKey unblinds the public key pair by the blind seed.
-func UnblindPublicKey(publicKey PublicKey, blind []byte) (PublicKey, error) {
-	b := sha512.Sum512(blind)
+// BlindPublicKey augments the public key pair by the blind key.
+func BlindPublicKey(publicKey PublicKey, blind []byte) (PublicKey, error) {
+	return BlindPublicKeyWithContext(publicKey, blind, nil)
+}
+
+// UnblindPublicKey unblinds the public key pair by the blind key and context string.
+func UnblindPublicKeyWithContext(publicKey PublicKey, blind []byte, context []byte) (PublicKey, error) {
+	blindContext := append(blind, 0x00)
+	blindContext = append(blindContext, context...)
+	b := sha512.Sum512(blindContext)
+
 	r := edwards25519.NewScalar().SetBytes(b[:32])
 	rInv := edwards25519.NewScalar().Set(r).ModInverse()
 
@@ -141,6 +151,11 @@ func UnblindPublicKey(publicKey PublicKey, blind []byte) (PublicKey, error) {
 	unblindedKey := P.Bytes()
 
 	return unblindedKey, nil
+}
+
+// UnblindPublicKey unblinds the public key pair by the blind key.
+func UnblindPublicKey(publicKey PublicKey, blind []byte) (PublicKey, error) {
+	return UnblindPublicKeyWithContext(publicKey, blind, nil)
 }
 
 // NewKeyFromSeed calculates a private key from a seed. It will panic if
@@ -216,17 +231,23 @@ func sign(signature, privateKey, message []byte) {
 	signInternal(signature, publicKey, message, prefix, s)
 }
 
-// BlindKeySign signs the message with privateKey blinded by blind and returns a
-// signature. It will panic if len(privateKey) is not PrivateKeySize.
-func BlindKeySign(privateKey PrivateKey, message, blind []byte) []byte {
+// BlindKeySignWithContext signs the message with privateKey blinded by a blind key and context string,
+// and returns a signature. It will panic if len(privateKey) is not PrivateKeySize.
+func BlindKeySignWithContext(privateKey PrivateKey, message, blind, context []byte) []byte {
 	// Outline the function body so that the returned signature can be
 	// stack-allocated.
 	signature := make([]byte, SignatureSize)
-	blindKeySign(signature, privateKey, blind, message)
+	blindKeySign(signature, privateKey, blind, message, context)
 	return signature
 }
 
-func blindKeySign(signature, privateKey, blind, message []byte) {
+// BlindKeySign signs the message with privateKey blinded by a blind key and context string,
+// and returns a signature. It will panic if len(privateKey) is not PrivateKeySize.
+func BlindKeySign(privateKey PrivateKey, message, blind []byte) []byte {
+	return BlindKeySignWithContext(privateKey, message, blind, nil)
+}
+
+func blindKeySign(signature, privateKey, blind, message, context []byte) {
 	if l := len(privateKey); l != PrivateKeySize {
 		panic("ed25519: bad private key length: " + strconv.Itoa(l))
 	}
@@ -234,7 +255,10 @@ func blindKeySign(signature, privateKey, blind, message []byte) {
 		panic("ed25519: bad blind length: " + strconv.Itoa(l))
 	}
 
-	b := sha512.Sum512(blind)
+	blindContext := append(blind, 0x00)
+	blindContext = append(blindContext, context...)
+	b := sha512.Sum512(blindContext)
+
 	r := edwards25519.NewScalar().SetBytes(b[:32])
 	prefix2 := b[32:]
 

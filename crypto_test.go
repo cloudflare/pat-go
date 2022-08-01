@@ -34,6 +34,7 @@ type rawECDSABlindingTestVector struct {
 	PrivateBlind   string `json:"bk"`
 	BlindPublicKey string `json:"pkR"`
 	Message        string `json:"message"`
+	Context        string `json:"context"`
 	Signature      string `json:"signature"`
 }
 
@@ -45,6 +46,7 @@ type ecdsaBlindingTestVector struct {
 	bk      *ecdsa.PrivateKey
 	pkR     *ecdsa.PublicKey
 	message []byte
+	context []byte
 	r       *big.Int
 	s       *big.Int
 }
@@ -76,7 +78,7 @@ func (etv ecdsaBlindingTestVector) MarshalJSON() ([]byte, error) {
 	etv.skS.D.FillBytes(skSEnc)
 
 	pkSEnc := elliptic.MarshalCompressed(etv.c, etv.skS.X, etv.skS.Y)
-	pkR, err := ecdsa.BlindPublicKey(etv.c, &etv.skS.PublicKey, etv.bk)
+	pkR, err := ecdsa.BlindPublicKeyWithContext(etv.c, &etv.skS.PublicKey, etv.bk, etv.context)
 	if err != nil {
 		return nil, err
 	}
@@ -99,6 +101,7 @@ func (etv ecdsaBlindingTestVector) MarshalJSON() ([]byte, error) {
 		PrivateBlind:   mustHex(skBEnc),
 		BlindPublicKey: mustHex(pkREnc),
 		Message:        mustHex(etv.message),
+		Context:        mustHex(etv.context),
 		Signature:      mustHex(sig),
 	})
 }
@@ -156,6 +159,7 @@ func (etv *ecdsaBlindingTestVector) UnmarshalJSON(data []byte) error {
 	}
 	etv.pkR = &pkR
 	etv.message = mustUnhex(nil, raw.Message)
+	etv.context = mustUnhex(nil, raw.Context)
 	etv.r = new(big.Int).SetBytes(sigEnc[0:scalarLen])
 	etv.s = new(big.Int).SetBytes(sigEnc[scalarLen:])
 	etv.c = curve
@@ -164,7 +168,7 @@ func (etv *ecdsaBlindingTestVector) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func generateECDSABlindingTestVector(t *testing.T, c elliptic.Curve, h crypto.Hash) ecdsaBlindingTestVector {
+func generateECDSABlindingTestVector(t *testing.T, c elliptic.Curve, h crypto.Hash, contextLen int) ecdsaBlindingTestVector {
 	skS, err := ecdsa.GenerateKey(c, rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -174,7 +178,10 @@ func generateECDSABlindingTestVector(t *testing.T, c elliptic.Curve, h crypto.Ha
 		t.Fatal(err)
 	}
 
-	pkR, err := ecdsa.BlindPublicKey(c, &skS.PublicKey, skB)
+	context := make([]byte, 32)
+	rand.Reader.Read(context)
+
+	pkR, err := ecdsa.BlindPublicKeyWithContext(c, &skS.PublicKey, skB, context[0:contextLen])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +190,7 @@ func generateECDSABlindingTestVector(t *testing.T, c elliptic.Curve, h crypto.Ha
 	digester := h.New()
 	digester.Write(message)
 	digest := digester.Sum(nil)
-	r, s, err := ecdsa.BlindKeySign(rand.Reader, skS, skB, digest)
+	r, s, err := ecdsa.BlindKeySignWithContext(rand.Reader, skS, skB, digest, context[0:contextLen])
 
 	return ecdsaBlindingTestVector{
 		c:       c,
@@ -192,13 +199,14 @@ func generateECDSABlindingTestVector(t *testing.T, c elliptic.Curve, h crypto.Ha
 		bk:      skB,
 		pkR:     pkR,
 		message: message,
+		context: context[0:contextLen],
 		r:       r,
 		s:       s,
 	}
 }
 
 func verifyECDSABlindingTestVector(t *testing.T, vector ecdsaBlindingTestVector) {
-	pkR, err := ecdsa.BlindPublicKey(vector.c, &vector.skS.PublicKey, vector.bk)
+	pkR, err := ecdsa.BlindPublicKeyWithContext(vector.c, &vector.skS.PublicKey, vector.bk, vector.context)
 	if err != nil {
 		t.Fatal("BlindPublicKey failed")
 	}
@@ -229,7 +237,8 @@ func verifyECDSABlindingTestVectors(t *testing.T, encoded []byte) {
 
 func TestVectorGenerateECDSABlinding(t *testing.T) {
 	vectors := make([]ecdsaBlindingTestVector, 0)
-	vectors = append(vectors, generateECDSABlindingTestVector(t, elliptic.P384(), crypto.SHA384))
+	vectors = append(vectors, generateECDSABlindingTestVector(t, elliptic.P384(), crypto.SHA384, 0))
+	vectors = append(vectors, generateECDSABlindingTestVector(t, elliptic.P384(), crypto.SHA384, 32))
 
 	// Encode the test vectors
 	encoded, err := json.Marshal(vectors)
@@ -272,6 +281,7 @@ type rawEd25519BlindingTestVector struct {
 	PublicBlind    string `json:"pkB"`
 	BlindPublicKey string `json:"pkR"`
 	Message        string `json:"message"`
+	Context        string `json:"context"`
 	Signature      string `json:"signature"`
 }
 
@@ -284,6 +294,7 @@ type ed25519BlindingTestVector struct {
 	pkR          ed25519.PublicKey
 	requestBlind []byte
 	message      []byte
+	context      []byte
 	signature    []byte
 }
 
@@ -316,6 +327,7 @@ func (etv ed25519BlindingTestVector) MarshalJSON() ([]byte, error) {
 		PublicBlind:    mustHex(etv.pkB),
 		BlindPublicKey: mustHex(etv.pkR),
 		Message:        mustHex(etv.message),
+		Context:        mustHex(etv.context),
 		Signature:      mustHex(etv.signature),
 	})
 }
@@ -333,27 +345,31 @@ func (etv *ed25519BlindingTestVector) UnmarshalJSON(data []byte) error {
 	etv.pkB = mustUnhex(nil, raw.PublicBlind)
 	etv.pkR = mustUnhex(nil, raw.BlindPublicKey)
 	etv.message = mustUnhex(nil, raw.Message)
+	etv.context = mustUnhex(nil, raw.Context)
 	etv.signature = mustUnhex(nil, raw.Signature)
 
 	return nil
 }
 
-func generateEd25519BlindingTestVector(t *testing.T, blindLen int) ed25519BlindingTestVector {
+func generateEd25519BlindingTestVector(t *testing.T, blindLen int, contextLen int) ed25519BlindingTestVector {
 	skS := make([]byte, 32)
 	rand.Reader.Read(skS)
 
 	skB := make([]byte, 32)
 	rand.Reader.Read(skB[0:blindLen])
 
+	context := make([]byte, 32)
+	rand.Reader.Read(context)
+
 	privateKey := ed25519.NewKeyFromSeed(skS)
 	publicKey := privateKey.Public().(ed25519.PublicKey)
-	publicBlind, err := ed25519.BlindPublicKey(publicKey, skB)
+	publicBlind, err := ed25519.BlindPublicKeyWithContext(publicKey, skB, context[0:contextLen])
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	message := []byte("hello world")
-	signature := ed25519.BlindKeySign(privateKey, message, skB)
+	signature := ed25519.BlindKeySignWithContext(privateKey, message, skB, context[0:contextLen])
 
 	return ed25519BlindingTestVector{
 		skS:       skS,
@@ -361,6 +377,7 @@ func generateEd25519BlindingTestVector(t *testing.T, blindLen int) ed25519Blindi
 		skB:       skB,
 		pkR:       publicBlind,
 		message:   message,
+		context:   context[0:contextLen],
 		signature: signature,
 	}
 }
@@ -372,7 +389,7 @@ func verifyEd25519BlindingTestVector(t *testing.T, vector ed25519BlindingTestVec
 		t.Fatal("Public key mismatch")
 	}
 
-	publicBlind, err := ed25519.BlindPublicKey(publicKey, vector.skB)
+	publicBlind, err := ed25519.BlindPublicKeyWithContext(publicKey, vector.skB, vector.context)
 	if err != nil {
 		t.Fatal("BlindKey failed")
 	}
@@ -400,8 +417,10 @@ func verifyEd25519BlindingTestVectors(t *testing.T, encoded []byte) {
 
 func TestVectorGenerateEd25519Blinding(t *testing.T) {
 	vectors := make([]ed25519BlindingTestVector, 0)
-	vectors = append(vectors, generateEd25519BlindingTestVector(t, 32))
-	vectors = append(vectors, generateEd25519BlindingTestVector(t, 0))
+	vectors = append(vectors, generateEd25519BlindingTestVector(t, 32, 0))
+	vectors = append(vectors, generateEd25519BlindingTestVector(t, 0, 0))
+	vectors = append(vectors, generateEd25519BlindingTestVector(t, 32, 32))
+	vectors = append(vectors, generateEd25519BlindingTestVector(t, 0, 32))
 
 	// Encode the test vectors
 	encoded, err := json.Marshal(vectors)

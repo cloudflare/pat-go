@@ -173,7 +173,7 @@ func GenerateKey(c elliptic.Curve, rand io.Reader) (*PrivateKey, error) {
 	return priv, nil
 }
 
-func hashBlind(c elliptic.Curve, sk *PrivateKey) (*big.Int, error) {
+func hashBlind(c elliptic.Curve, sk *PrivateKey, context []byte) (*big.Int, error) {
 	var h crypto.Hash
 	var L uint
 	switch c.Params().Name {
@@ -196,13 +196,15 @@ func hashBlind(c elliptic.Curve, sk *PrivateKey) (*big.Int, error) {
 	var u [1]big.Int
 	scalarBytes := make([]byte, (sk.D.BitLen()+7)>>3)
 	sk.D.FillBytes(scalarBytes)
-	group.HashToField(u[:], scalarBytes, xmd, c.Params().N, L)
+	blindContext := append(scalarBytes, 0x00)
+	blindContext = append(blindContext, context...)
+	group.HashToField(u[:], blindContext, xmd, c.Params().N, L)
 	return new(big.Int).Set(&u[0]), nil
 }
 
-// BlindPublicKey blinds a public key using a private key pair.
-func BlindPublicKey(c elliptic.Curve, pk *PublicKey, sk *PrivateKey) (*PublicKey, error) {
-	skBlind, err := hashBlind(c, sk)
+// BlindPublicKeyWithContext blinds a public key using a private key pair and context string.
+func BlindPublicKeyWithContext(c elliptic.Curve, pk *PublicKey, bk *PrivateKey, context []byte) (*PublicKey, error) {
+	skBlind, err := hashBlind(c, bk, context)
 	if err != nil {
 		return nil, err
 	}
@@ -212,9 +214,14 @@ func BlindPublicKey(c elliptic.Curve, pk *PublicKey, sk *PrivateKey) (*PublicKey
 	}, nil
 }
 
-// UnblindPublicKey unblinds a public key using a private key pair.
-func UnblindPublicKey(c elliptic.Curve, pk *PublicKey, sk *PrivateKey) (*PublicKey, error) {
-	skBlind, err := hashBlind(c, sk)
+// BlindPublicKey blinds a public key using a private key pair and empty context string.
+func BlindPublicKey(c elliptic.Curve, pk *PublicKey, bk *PrivateKey) (*PublicKey, error) {
+	return BlindPublicKeyWithContext(c, pk, bk, nil)
+}
+
+// UnblindPublicKeyWithContext unblinds a public key using a private key pair and context string.
+func UnblindPublicKeyWithContext(c elliptic.Curve, pk *PublicKey, bk *PrivateKey, context []byte) (*PublicKey, error) {
+	skBlind, err := hashBlind(c, bk, context)
 	if err != nil {
 		return nil, err
 	}
@@ -225,13 +232,18 @@ func UnblindPublicKey(c elliptic.Curve, pk *PublicKey, sk *PrivateKey) (*PublicK
 	}, nil
 }
 
-// BlindKeySign blinds the signing key by a blind and then produces a signature over the hashed input.
-func BlindKeySign(rand io.Reader, skS *PrivateKey, skB *PrivateKey, hash []byte) (r, s *big.Int, err error) {
-	pkB, err := BlindPublicKey(skS.Curve, &skS.PublicKey, skB)
+// UnblindPublicKey unblinds a public key using a private key pair and empty context string.
+func UnblindPublicKey(c elliptic.Curve, pk *PublicKey, bk *PrivateKey) (*PublicKey, error) {
+	return UnblindPublicKeyWithContext(c, pk, bk, nil)
+}
+
+// BlindKeySignWithContext blinds the signing key by a blind, with a context string, and then produces a signature over the hashed input.
+func BlindKeySignWithContext(rand io.Reader, skS *PrivateKey, skB *PrivateKey, hash []byte, context []byte) (r, s *big.Int, err error) {
+	pkB, err := BlindPublicKeyWithContext(skS.Curve, &skS.PublicKey, skB, context)
 	if err != nil {
 		return nil, nil, err
 	}
-	skBlind, err := hashBlind(skS.Curve, skB)
+	skBlind, err := hashBlind(skS.Curve, skB, context)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -244,6 +256,11 @@ func BlindKeySign(rand io.Reader, skS *PrivateKey, skB *PrivateKey, hash []byte)
 	}
 
 	return Sign(rand, skR, hash)
+}
+
+// BlindKeySign blinds the signing key by a blind and then produces a signature over the hashed input.
+func BlindKeySign(rand io.Reader, skS *PrivateKey, skB *PrivateKey, hash []byte) (r, s *big.Int, err error) {
+	return BlindKeySignWithContext(rand, skS, skB, hash, nil)
 }
 
 // hashToInt converts a hash value to an integer. There is some disagreement
