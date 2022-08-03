@@ -76,6 +76,20 @@ func loadPrivateKey(t *testing.T) *rsa.PrivateKey {
 	return privateKey
 }
 
+func loadPrivateKeyForBenchmark(b *testing.B) *rsa.PrivateKey {
+	block, _ := pem.Decode([]byte(testTokenPrivateKey))
+	if block == nil || block.Type != "RSA PRIVATE KEY" {
+		b.Fatal("PEM private key decoding failed")
+	}
+
+	privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	return privateKey
+}
+
 func TestSignatureDifferences(t *testing.T) {
 	_, secretKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -653,4 +667,52 @@ func TestVectorVerifyAnonOriginID(t *testing.T) {
 	}
 
 	verifyAnonOriginIDTestVectors(t, encoded)
+}
+
+func BenchmarkRateLimitedTokenRoundTrip(b *testing.B) {
+	issuer := NewRateLimitedIssuer(loadPrivateKeyForBenchmark(b))
+	testOrigin := "origin.example"
+	issuer.AddOrigin(testOrigin)
+
+	curve := elliptic.P384()
+	secretKey, err := ecdsa.GenerateKey(curve, rand.Reader)
+	blindKey, err := ecdsa.GenerateKey(curve, rand.Reader)
+	client := CreateRateLimitedClientFromSecret(secretKey.D.Bytes())
+
+	challenge := make([]byte, 32)
+	rand.Reader.Read(challenge)
+
+	var requestState RateLimitedTokenRequestState
+	b.Run("Rate-Limited Client Blind", func(b *testing.B) {
+		nonce := make([]byte, 32)
+		rand.Reader.Read(nonce)
+		requestState, err = client.CreateTokenRequest(challenge, nonce, blindKey.D.Bytes(), issuer.TokenKeyID(), issuer.TokenKey(), testOrigin, issuer.NameKey())
+		if err != nil {
+			b.Error(err)
+		}
+	})
+
+	var blindedSignature []byte
+	var blindedPublicKey []byte
+	b.Run("Rate-Limited Issuer Evaluate", func(b *testing.B) {
+		blindedSignature, blindedPublicKey, err = issuer.Evaluate(requestState.Request())
+		if err != nil {
+			b.Error(err)
+		}
+	})
+
+	b.Run("Rate-Limited Attester Index", func(b *testing.B) {
+		publicKeyEnc := elliptic.MarshalCompressed(curve, client.secretKey.PublicKey.X, client.secretKey.PublicKey.Y)
+		_, err = FinalizeIndex(publicKeyEnc, blindKey.D.Bytes(), blindedPublicKey)
+		if err != nil {
+			b.Error(err)
+		}
+	})
+
+	b.Run("Rate-Limited Client Finalize", func(b *testing.B) {
+		_, err := requestState.FinalizeToken(blindedSignature)
+		if err != nil {
+			b.Error(err)
+		}
+	})
 }
