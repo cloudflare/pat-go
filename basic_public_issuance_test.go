@@ -305,3 +305,42 @@ func TestVectorVerifyBasicIssuance(t *testing.T) {
 
 	verifyBasicIssuanceTestVectors(t, encoded)
 }
+
+func BenchmarkPublicTokenRoundTrip(b *testing.B) {
+	tokenKey := loadPrivateKeyForBenchmark(b)
+	issuer := NewBasicPublicIssuer(tokenKey)
+
+	client := BasicPublicClient{}
+	tokenKeyID := issuer.TokenKeyID()
+	tokenPublicKey := issuer.TokenKey()
+
+	challenge := make([]byte, 32)
+	rand.Reader.Read(challenge)
+
+	var err error
+	var requestState BasicPublicTokenRequestState
+	b.Run("Basic Public Client Blind", func(b *testing.B) {
+		nonce := make([]byte, 32)
+		rand.Reader.Read(nonce)
+
+		requestState, err = client.CreateTokenRequest(challenge, nonce, tokenKeyID, tokenPublicKey)
+		if err != nil {
+			b.Error(err)
+		}
+	})
+
+	var blindedSignature []byte
+	b.Run("Basic Public Client Evaluate", func(b *testing.B) {
+		blindedSignature, err = issuer.Evaluate(requestState.Request())
+		if err != nil {
+			b.Error(err)
+		}
+	})
+
+	b.Run("Basic Public Client Finalize", func(b *testing.B) {
+		_, err := requestState.FinalizeToken(blindedSignature)
+		if err != nil {
+			b.Error(err)
+		}
+	})
+}
