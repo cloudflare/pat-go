@@ -85,6 +85,40 @@ func TestBlindUnblindKey(t *testing.T) {
 	}
 }
 
+func TestBlindUnblindKeyWithContext(t *testing.T) {
+	publicKey, _, _ := GenerateKey(rand.Reader)
+
+	blind := make([]byte, 32)
+	rand.Reader.Read(blind)
+
+	context := make([]byte, 32)
+	rand.Reader.Read(context)
+
+	blindedKey, err := BlindPublicKeyWithContext(publicKey, blind, context)
+	if err != nil {
+		t.Errorf("failed to blind public key")
+	}
+
+	unblindedKey, err := UnblindPublicKeyWithContext(blindedKey, blind, context)
+	if err != nil {
+		t.Errorf("failed to blind public key")
+	}
+
+	if !bytes.Equal(publicKey, unblindedKey) {
+		t.Fatal("Blind-unblind mismatch")
+	}
+
+	context[0] ^= 0xFF
+	invalidKey, err := UnblindPublicKeyWithContext(blindedKey, blind, context)
+	if err != nil {
+		t.Errorf("failed to blind public key")
+	}
+
+	if bytes.Equal(publicKey, invalidKey) {
+		t.Fatal("Invalid Blind-unblind mismatch")
+	}
+}
+
 func TestCryptoSigner(t *testing.T) {
 	var zero zeroReader
 	public, private, _ := GenerateKey(zero)
