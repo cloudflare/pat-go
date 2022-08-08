@@ -165,9 +165,9 @@ func encryptOriginTokenRequest(nameKey EncapKey, tokenKeyID uint8, blindedMessag
 	input := tokenRequest.Marshal()
 
 	aad := b.BytesOrPanic()
+
 	ct := context.Seal(aad, input)
 	encryptedTokenRequest := append(enc, ct...)
-
 	secret := context.Export([]byte("TokenResponse"), nameKey.suite.AEAD.KeySize())
 
 	return issuerKeyID[:], encryptedTokenRequest, secret, nil
@@ -518,7 +518,8 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 		return nil, nil, err
 	}
 
-	enc := req.EncryptedTokenRequest[0:i.nameKey.suite.KEM.PublicKeySize()]
+	enc := make([]byte, i.nameKey.suite.KEM.PublicKeySize())
+	copy(enc, req.EncryptedTokenRequest[0:i.nameKey.suite.KEM.PublicKeySize()])
 	salt := append(append(enc, responseNonce...))
 
 	// Derive encryption secrets
