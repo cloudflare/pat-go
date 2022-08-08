@@ -224,7 +224,7 @@ type rawOriginEncryptionTestVector struct {
 	OriginNameKey         string      `json:"issuer_encap_key"`
 	TokenType             uint16      `json:"token_type"`
 	OriginNameKeyID       string      `json:"issuer_encap_key_id"`
-	IndexRequest          string      `json:"request_key"`
+	RequestKey            string      `json:"request_key"`
 	TokenKeyID            uint8       `json:"token_key_id"`
 	BlindMessage          string      `json:"blinded_msg"`
 	OriginName            string      `json:"origin_name"`
@@ -240,7 +240,7 @@ type originEncryptionTestVector struct {
 	nameKeySeed           []byte
 	nameKey               PrivateEncapKey
 	tokenType             uint16
-	indexRequest          []byte
+	requestKey            []byte
 	tokenKeyID            uint8
 	blindMessage          []byte
 	issuerKeyID           []byte
@@ -278,7 +278,7 @@ func (etv originEncryptionTestVector) MarshalJSON() ([]byte, error) {
 		OriginNameKeySeed:     mustHex(etv.nameKeySeed),
 		OriginNameKey:         mustHex(etv.nameKey.Public().Marshal()),
 		TokenType:             etv.tokenType,
-		IndexRequest:          mustHex(etv.indexRequest),
+		RequestKey:            mustHex(etv.requestKey),
 		TokenKeyID:            etv.tokenKeyID,
 		BlindMessage:          mustHex(etv.blindMessage),
 		OriginNameKeyID:       mustHex(etv.issuerKeyID),
@@ -316,7 +316,7 @@ func (etv *originEncryptionTestVector) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	etv.nameKey = nameKey
-	etv.indexRequest = mustUnhex(nil, raw.IndexRequest)
+	etv.requestKey = mustUnhex(nil, raw.RequestKey)
 	etv.tokenKeyID = raw.TokenKeyID
 	etv.blindMessage = mustUnhex(nil, raw.BlindMessage)
 	etv.issuerKeyID = mustUnhex(nil, raw.OriginNameKeyID)
@@ -336,15 +336,15 @@ func generateOriginEncryptionTestVector(t *testing.T, kemID hpke.KEMID, kdfID hp
 	}
 
 	// Generate random token and index requests
-	indexRequest := make([]byte, 49)
-	rand.Reader.Read(indexRequest)
+	requestKey := make([]byte, 49)
+	rand.Reader.Read(requestKey)
 	tokenKeyIDBuf := []byte{0x00}
 	rand.Reader.Read(tokenKeyIDBuf)
 	blindMessage := make([]byte, 256)
 	rand.Reader.Read(blindMessage)
 
 	originName := "test.example"
-	_, encryptedTokenRequest, secret, err := encryptOriginTokenRequest(nameKey.Public(), tokenKeyIDBuf[0], blindMessage, indexRequest, originName)
+	_, encryptedTokenRequest, secret, err := encryptOriginTokenRequest(nameKey.Public(), tokenKeyIDBuf[0], blindMessage, requestKey, originName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -360,7 +360,7 @@ func generateOriginEncryptionTestVector(t *testing.T, kemID hpke.KEMID, kdfID hp
 		nameKey:               nameKey,
 		issuerKeyID:           issuerKeyID[:],
 		tokenType:             RateLimitedTokenType,
-		indexRequest:          indexRequest,
+		requestKey:            requestKey,
 		tokenKeyID:            tokenKeyIDBuf[0],
 		blindMessage:          blindMessage,
 		originName:            originName,
@@ -387,7 +387,7 @@ func verifyOriginEncryptionTestVector(t *testing.T, vector originEncryptionTestV
 		t.Fatal(err)
 	}
 
-	originTokenRequest, _, err := decryptOriginTokenRequest(privateNameKey, vector.tokenKeyID, vector.encryptedTokenRequest)
+	originTokenRequest, _, err := decryptOriginTokenRequest(privateNameKey, vector.requestKey, vector.encryptedTokenRequest)
 	if err != nil {
 		t.Fatal(err)
 	}
