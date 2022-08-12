@@ -38,8 +38,8 @@ func (r *InnerTokenRequest) Marshal() []byte {
 	}
 
 	b := cryptobyte.NewBuilder(nil)
-	b.AddBytes(r.blindedMsg)
 	b.AddUint8(r.tokenKeyId)
+	b.AddBytes(r.blindedMsg)
 	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
 		b.AddBytes([]byte(r.paddedOrigin))
 	})
@@ -51,8 +51,7 @@ func (r *InnerTokenRequest) Marshal() []byte {
 func (r *InnerTokenRequest) Unmarshal(data []byte) bool {
 	s := cryptobyte.String(data)
 
-	if !s.ReadBytes(&r.blindedMsg, 256) ||
-		!s.ReadUint8(&r.tokenKeyId) {
+	if !s.ReadUint8(&r.tokenKeyId) || !s.ReadBytes(&r.blindedMsg, 256) {
 		return false
 	}
 
