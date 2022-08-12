@@ -146,7 +146,11 @@ func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 
 	publicKeyEnc := elliptic.MarshalCompressed(curve, client.secretKey.PublicKey.X, client.secretKey.PublicKey.Y)
 
-	expectedIndexKey, err := ecdsa.BlindPublicKey(curve, &client.secretKey.PublicKey, originIndexKey)
+	b := cryptobyte.NewBuilder(nil)
+	b.AddUint16(RateLimitedTokenType)
+	b.AddBytes([]byte("IssuerBlind"))
+	ctx := b.BytesOrPanic()
+	expectedIndexKey, err := ecdsa.BlindPublicKeyWithContext(curve, &client.secretKey.PublicKey, originIndexKey, ctx)
 	if err != nil {
 		t.Error(err)
 	}
@@ -171,7 +175,7 @@ func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 		t.Error(err)
 	}
 
-	b := cryptobyte.NewBuilder(nil)
+	b = cryptobyte.NewBuilder(nil)
 	b.AddUint16(RateLimitedTokenType)
 	b.AddBytes(nonce)
 	context := sha256.Sum256(challenge)

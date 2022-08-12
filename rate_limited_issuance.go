@@ -88,7 +88,11 @@ func FinalizeIndex(clientKey, blindEnc, blindedRequestKeyEnc []byte) ([]byte, er
 		return nil, err
 	}
 
-	indexKey, err := ecdsa.UnblindPublicKey(curve, blindedRequestKey, blindKey)
+	b := cryptobyte.NewBuilder(nil)
+	b.AddUint16(RateLimitedTokenType)
+	b.AddBytes([]byte("ClientBlind"))
+	ctx := b.BytesOrPanic()
+	indexKey, err := ecdsa.UnblindPublicKeyWithContext(curve, blindedRequestKey, blindKey, ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -264,7 +268,11 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 
 	clientKeyEnc := elliptic.MarshalCompressed(c.curve, c.secretKey.PublicKey.X, c.secretKey.PublicKey.Y)
 
-	blindedPublicKey, err := ecdsa.BlindPublicKey(c.curve, &c.secretKey.PublicKey, blindKey)
+	b := cryptobyte.NewBuilder(nil)
+	b.AddUint16(RateLimitedTokenType)
+	b.AddBytes([]byte("ClientBlind"))
+	ctx := b.BytesOrPanic()
+	blindedPublicKey, err := ecdsa.BlindPublicKeyWithContext(c.curve, &c.secretKey.PublicKey, blindKey, ctx)
 	if err != nil {
 		return RateLimitedTokenRequestState{}, err
 	}
@@ -291,7 +299,7 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 		return RateLimitedTokenRequestState{}, err
 	}
 
-	b := cryptobyte.NewBuilder(nil)
+	b = cryptobyte.NewBuilder(nil)
 	b.AddUint16(RateLimitedTokenType)
 	b.AddBytes(blindedPublicKeyEnc)
 	b.AddBytes(nameKeyID)
@@ -304,7 +312,7 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 	hash.Write(message)
 	digest := hash.Sum(nil)
 
-	r, s, err := ecdsa.BlindKeySign(rand.Reader, c.secretKey, blindKey, digest)
+	r, s, err := ecdsa.BlindKeySignWithContext(rand.Reader, c.secretKey, blindKey, digest, ctx)
 	if err != nil {
 		return RateLimitedTokenRequestState{}, err
 	}
@@ -496,7 +504,11 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 	}
 
 	// Compute the request key
-	blindedRequestKey, err := ecdsa.BlindPublicKey(i.curve, requestKey, originIndexKey)
+	b = cryptobyte.NewBuilder(nil)
+	b.AddUint16(RateLimitedTokenType)
+	b.AddBytes([]byte("IssuerBlind"))
+	ctx := b.BytesOrPanic()
+	blindedRequestKey, err := ecdsa.BlindPublicKeyWithContext(i.curve, requestKey, originIndexKey, ctx)
 	if err != nil {
 		return nil, nil, err
 	}
