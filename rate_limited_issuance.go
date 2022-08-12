@@ -7,8 +7,10 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/sha512"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"log"
 	"math/big"
 
 	hpke "github.com/cisco/go-hpke"
@@ -466,6 +468,8 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 		return nil, nil, err
 	}
 	originName := unpadOriginName(originTokenRequest.paddedOrigin)
+
+	log.Printf("InnerTokenRequest: %d %s %s %s\n", originTokenRequest.tokenKeyId, hex.EncodeToString(originTokenRequest.blindedMsg), string(originTokenRequest.paddedOrigin), originName)
 
 	// Check to see if it's a registered origin
 	originIndexKey, ok := i.originIndexKeys[originName]
