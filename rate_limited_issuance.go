@@ -27,8 +27,8 @@ var (
 
 type InnerTokenRequest struct {
 	raw          []byte
+	tokenKeyId   uint8
 	blindedMsg   []byte
-	requestKey   []byte
 	paddedOrigin []byte
 }
 
@@ -38,8 +38,8 @@ func (r *InnerTokenRequest) Marshal() []byte {
 	}
 
 	b := cryptobyte.NewBuilder(nil)
+	b.AddUint8(r.tokenKeyId)
 	b.AddBytes(r.blindedMsg)
-	b.AddBytes(r.requestKey)
 	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
 		b.AddBytes([]byte(r.paddedOrigin))
 	})
@@ -51,8 +51,7 @@ func (r *InnerTokenRequest) Marshal() []byte {
 func (r *InnerTokenRequest) Unmarshal(data []byte) bool {
 	s := cryptobyte.String(data)
 
-	if !s.ReadBytes(&r.blindedMsg, 256) ||
-		!s.ReadBytes(&r.requestKey, 49) {
+	if !s.ReadUint8(&r.tokenKeyId) || !s.ReadBytes(&r.blindedMsg, 256) {
 		return false
 	}
 
@@ -88,7 +87,11 @@ func FinalizeIndex(clientKey, blindEnc, blindedRequestKeyEnc []byte) ([]byte, er
 		return nil, err
 	}
 
-	indexKey, err := ecdsa.UnblindPublicKey(curve, blindedRequestKey, blindKey)
+	b := cryptobyte.NewBuilder(nil)
+	b.AddUint16(RateLimitedTokenType)
+	b.AddBytes([]byte("ClientBlind"))
+	ctx := b.BytesOrPanic()
+	indexKey, err := ecdsa.UnblindPublicKeyWithContext(curve, blindedRequestKey, blindKey, ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -154,12 +157,12 @@ func encryptOriginTokenRequest(nameKey EncapKey, tokenKeyID uint8, blindedMessag
 	b.AddUint16(uint16(nameKey.suite.KDF.ID()))
 	b.AddUint16(uint16(nameKey.suite.AEAD.ID()))
 	b.AddUint16(RateLimitedTokenType)
-	b.AddUint8(tokenKeyID)
+	b.AddBytes(requestKey)
 	b.AddBytes(issuerKeyID[:])
 
 	tokenRequest := InnerTokenRequest{
 		blindedMsg:   blindedMessage,
-		requestKey:   requestKey,
+		tokenKeyId:   tokenKeyID,
 		paddedOrigin: padOriginName(originName),
 	}
 	input := tokenRequest.Marshal()
@@ -264,7 +267,11 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 
 	clientKeyEnc := elliptic.MarshalCompressed(c.curve, c.secretKey.PublicKey.X, c.secretKey.PublicKey.Y)
 
-	blindedPublicKey, err := ecdsa.BlindPublicKey(c.curve, &c.secretKey.PublicKey, blindKey)
+	b := cryptobyte.NewBuilder(nil)
+	b.AddUint16(RateLimitedTokenType)
+	b.AddBytes([]byte("ClientBlind"))
+	ctx := b.BytesOrPanic()
+	blindedPublicKey, err := ecdsa.BlindPublicKeyWithContext(c.curve, &c.secretKey.PublicKey, blindKey, ctx)
 	if err != nil {
 		return RateLimitedTokenRequestState{}, err
 	}
@@ -291,9 +298,9 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 		return RateLimitedTokenRequestState{}, err
 	}
 
-	b := cryptobyte.NewBuilder(nil)
+	b = cryptobyte.NewBuilder(nil)
 	b.AddUint16(RateLimitedTokenType)
-	b.AddUint8(tokenKeyID[0])
+	b.AddBytes(blindedPublicKeyEnc)
 	b.AddBytes(nameKeyID)
 	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
 		b.AddBytes(encryptedTokenRequest)
@@ -304,7 +311,7 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 	hash.Write(message)
 	digest := hash.Sum(nil)
 
-	r, s, err := ecdsa.BlindKeySign(rand.Reader, c.secretKey, blindKey, digest)
+	r, s, err := ecdsa.BlindKeySignWithContext(rand.Reader, c.secretKey, blindKey, digest, ctx)
 	if err != nil {
 		return RateLimitedTokenRequestState{}, err
 	}
@@ -316,22 +323,21 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 	signature := append(rEnc, sEnc...)
 
 	request := &RateLimitedTokenRequest{
-		TokenKeyID:            tokenKeyID[0],
+		RequestKey:            blindedPublicKeyEnc,
 		NameKeyID:             nameKeyID,
 		EncryptedTokenRequest: encryptedTokenRequest,
 		Signature:             signature,
 	}
 
 	requestState := RateLimitedTokenRequestState{
-		tokenInput:        tokenInput,
-		clientKey:         clientKeyEnc,
-		blindedRequestKey: blindedPublicKeyEnc,
-		request:           request,
-		encapSecret:       secret,
-		encapEnc:          encryptedTokenRequest[0:nameKey.suite.KEM.PublicKeySize()],
-		nameKey:           nameKey,
-		verifier:          verifierState,
-		verificationKey:   tokenKey,
+		tokenInput:      tokenInput,
+		clientKey:       clientKeyEnc,
+		request:         request,
+		encapSecret:     secret,
+		encapEnc:        encryptedTokenRequest[0:nameKey.suite.KEM.PublicKeySize()],
+		nameKey:         nameKey,
+		verifier:        verifierState,
+		verificationKey: tokenKey,
 	}
 
 	return requestState, nil
@@ -416,7 +422,7 @@ func max(a, b int) int {
 	return b
 }
 
-func decryptOriginTokenRequest(nameKey PrivateEncapKey, tokenKeyID uint8, encryptedTokenRequest []byte) (InnerTokenRequest, []byte, error) {
+func decryptOriginTokenRequest(nameKey PrivateEncapKey, requestKey []byte, encryptedTokenRequest []byte) (InnerTokenRequest, []byte, error) {
 	issuerConfigID := sha256.Sum256(nameKey.Public().Marshal())
 
 	// Decrypt the origin name
@@ -426,7 +432,7 @@ func decryptOriginTokenRequest(nameKey PrivateEncapKey, tokenKeyID uint8, encryp
 	b.AddUint16(uint16(nameKey.suite.KDF.ID()))
 	b.AddUint16(uint16(nameKey.suite.AEAD.ID()))
 	b.AddUint16(RateLimitedTokenType)
-	b.AddUint8(tokenKeyID)
+	b.AddBytes(requestKey)
 	b.AddBytes(issuerConfigID[:])
 	aad := b.BytesOrPanic()
 
@@ -455,7 +461,7 @@ func decryptOriginTokenRequest(nameKey PrivateEncapKey, tokenKeyID uint8, encryp
 
 func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byte, error) {
 	// Recover and validate the origin name
-	originTokenRequest, secret, err := decryptOriginTokenRequest(i.nameKey, req.TokenKeyID, req.EncryptedTokenRequest)
+	originTokenRequest, secret, err := decryptOriginTokenRequest(i.nameKey, req.RequestKey, req.EncryptedTokenRequest)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -468,7 +474,7 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 	}
 
 	// Deserialize the request key
-	x, y := elliptic.UnmarshalCompressed(i.curve, originTokenRequest.requestKey)
+	x, y := elliptic.UnmarshalCompressed(i.curve, req.RequestKey)
 	requestKey := &ecdsa.PublicKey{
 		i.curve, x, y,
 	}
@@ -480,7 +486,7 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 	// Verify the request signature
 	b := cryptobyte.NewBuilder(nil)
 	b.AddUint16(RateLimitedTokenType)
-	b.AddUint8(req.TokenKeyID)
+	b.AddBytes(req.RequestKey)
 	b.AddBytes(req.NameKeyID)
 	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
 		b.AddBytes(req.EncryptedTokenRequest)
@@ -497,7 +503,11 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 	}
 
 	// Compute the request key
-	blindedRequestKey, err := ecdsa.BlindPublicKey(i.curve, requestKey, originIndexKey)
+	b = cryptobyte.NewBuilder(nil)
+	b.AddUint16(RateLimitedTokenType)
+	b.AddBytes([]byte("IssuerBlind"))
+	ctx := b.BytesOrPanic()
+	blindedRequestKey, err := ecdsa.BlindPublicKeyWithContext(i.curve, requestKey, originIndexKey, ctx)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -106,10 +106,10 @@ func (r *BasicPublicTokenRequest) Unmarshal(data []byte) bool {
 // https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#section-5.3
 type RateLimitedTokenRequest struct {
 	raw                   []byte
-	TokenKeyID            uint8
+	RequestKey            []byte // Npk bytes
 	NameKeyID             []byte // 32 bytes
 	EncryptedTokenRequest []byte // 16-bit length prefixed slice
-	Signature             []byte // 96 bytes
+	Signature             []byte // Nsig bytes
 }
 
 func (r RateLimitedTokenRequest) Type() uint16 {
@@ -117,7 +117,7 @@ func (r RateLimitedTokenRequest) Type() uint16 {
 }
 
 func (r RateLimitedTokenRequest) Equal(r2 RateLimitedTokenRequest) bool {
-	if r.TokenKeyID == r2.TokenKeyID &&
+	if bytes.Equal(r.RequestKey, r2.RequestKey) &&
 		bytes.Equal(r.NameKeyID, r2.NameKeyID) &&
 		bytes.Equal(r.EncryptedTokenRequest, r2.EncryptedTokenRequest) &&
 		bytes.Equal(r.Signature, r2.Signature) {
@@ -134,7 +134,7 @@ func (r *RateLimitedTokenRequest) Marshal() []byte {
 
 	b := cryptobyte.NewBuilder(nil)
 	b.AddUint16(RateLimitedTokenType)
-	b.AddUint8(r.TokenKeyID)
+	b.AddBytes(r.RequestKey)
 	b.AddBytes(r.NameKeyID)
 	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
 		b.AddBytes(r.EncryptedTokenRequest)
@@ -151,7 +151,7 @@ func (r *RateLimitedTokenRequest) Unmarshal(data []byte) bool {
 	var tokenType uint16
 	if !s.ReadUint16(&tokenType) ||
 		tokenType != RateLimitedTokenType ||
-		!s.ReadUint8(&r.TokenKeyID) ||
+		!s.ReadBytes(&r.RequestKey, 49) ||
 		!s.ReadBytes(&r.NameKeyID, 32) {
 		return false
 	}
