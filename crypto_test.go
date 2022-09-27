@@ -25,7 +25,7 @@ const (
 )
 
 ///////
-// Ed25519 key blinding test vector
+// ECDSA key blinding test vector
 type rawECDSABlindingTestVector struct {
 	Curve          string `json:"Curve"`
 	Hash           string `json:"Hash"`
@@ -277,7 +277,7 @@ func TestVectorVerifyECDSABlinding(t *testing.T) {
 type rawEd25519BlindingTestVector struct {
 	PrivateKey     string `json:"skS"`
 	PublicKey      string `json:"pkS"`
-	PrivateBlind   string `json:"skB"`
+	PrivateBlind   string `json:"bk"`
 	PublicBlind    string `json:"pkB"`
 	BlindPublicKey string `json:"pkR"`
 	Message        string `json:"message"`
