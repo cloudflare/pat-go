@@ -1,4 +1,4 @@
-# Private Access Tokens
+# Private Access Tokens Go Library
 
 This repository provides a Go implementation of the [basic](https://ietf-wg-privacypass.github.io/base-drafts/draft-ietf-privacypass-protocol.html) and [rate-limited](https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html) Privacy Pass issuance protocols. It is meant for experimental and interop purposes, and not to be used in production. It is expected that changes in the code, repository, and API may occur in the future as the Privacy Pass standard evolves.
 
