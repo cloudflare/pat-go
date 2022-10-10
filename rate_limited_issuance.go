@@ -74,7 +74,7 @@ func computeIndex(clientKey, indexKey []byte) ([]byte, error) {
 	return clientOriginIndex, nil
 }
 
-// https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-attester-behavior-mapping-o
+// https://ietf-wg-privacypass.github.io/draft-ietf-privacypass-rate-limit-tokens/draft-ietf-privacypass-rate-limit-tokens.html#name-attester-behavior-index-com
 func FinalizeIndex(clientKey, blindEnc, blindedRequestKeyEnc []byte) ([]byte, error) {
 	curve := elliptic.P384()
 	x, y := elliptic.UnmarshalCompressed(curve, blindedRequestKeyEnc)
@@ -119,7 +119,6 @@ func CreateRateLimitedClientFromSecret(secret []byte) RateLimitedClient {
 	}
 }
 
-// https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-encrypting-origin-names
 func padOriginName(originName string) []byte {
 	N := 31 - ((len(originName) - 1) % 32)
 	zeroes := make([]byte, N)
@@ -141,7 +140,7 @@ func unpadOriginName(paddedOriginName []byte) string {
 	return string(paddedOriginName[0 : lastNonZero+1])
 }
 
-// https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-encrypting-origin-names
+// https://ietf-wg-privacypass.github.io/draft-ietf-privacypass-rate-limit-tokens/draft-ietf-privacypass-rate-limit-tokens.html#name-encrypting-origin-token-req
 func encryptOriginTokenRequest(nameKey EncapKey, tokenKeyID uint8, blindedMessage []byte, requestKey []byte, originName string) ([]byte, []byte, []byte, error) {
 	issuerKeyEnc := nameKey.Marshal()
 	issuerKeyID := sha256.Sum256(issuerKeyEnc)
@@ -200,6 +199,7 @@ func (s RateLimitedTokenRequestState) ClientKey() []byte {
 	return s.clientKey
 }
 
+// https://ietf-wg-privacypass.github.io/draft-ietf-privacypass-rate-limit-tokens/draft-ietf-privacypass-rate-limit-tokens.html#name-attester-to-client-response
 func (s RateLimitedTokenRequestState) FinalizeToken(encryptedtokenResponse []byte) (Token, error) {
 	// response_nonce = random(max(Nn, Nk)), taken from the encapsualted response
 	responseNonceLen := max(s.nameKey.suite.AEAD.KeySize(), s.nameKey.suite.AEAD.NonceSize())
@@ -257,8 +257,7 @@ func (s RateLimitedTokenRequestState) FinalizeToken(encryptedtokenResponse []byt
 	return token, nil
 }
 
-// https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-client-to-attester-request
-// https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-index-computation
+// https://ietf-wg-privacypass.github.io/draft-ietf-privacypass-rate-limit-tokens/draft-ietf-privacypass-rate-limit-tokens.html#name-client-to-attester-request
 func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []byte, tokenKeyID []byte, tokenKey *rsa.PublicKey, originName string, nameKey EncapKey) (RateLimitedTokenRequestState, error) {
 	blindKey, err := ecdsa.CreateKey(c.curve, blindKeyEnc)
 	if err != nil {
@@ -459,6 +458,7 @@ func decryptOriginTokenRequest(nameKey PrivateEncapKey, requestKey []byte, encry
 	return *tokenRequest, secret, err
 }
 
+// https://ietf-wg-privacypass.github.io/draft-ietf-privacypass-rate-limit-tokens/draft-ietf-privacypass-rate-limit-tokens.html#name-issuer-to-attester-response
 func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byte, error) {
 	// Recover and validate the origin name
 	originTokenRequest, secret, err := decryptOriginTokenRequest(i.nameKey, req.RequestKey, req.EncryptedTokenRequest)
