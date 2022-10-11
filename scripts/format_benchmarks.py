@@ -37,11 +37,11 @@ for line in sys.stdin:
 
 print("\\begin{table}[ht!]")
 print("\\label{tab:bench-computation-overhead}")
-print("\\caption{Computation cost for basic and rate-limited issuance protocols")
-print("\\begin{tabular}{|l|c|}")
-print("{\\bf Operation} & {\\bf Time (ns/op)} \hline")
+print("\\caption{Computation cost for basic and rate-limited issuance protocols}")
+print("\\begin{tabular}{| l | c |}")
 print("\hline")
+print("\\textbf{Operation} & \\textbf{Time (ns/op)} \\\\ \hline")
 for name in orderedNames:
-    print("  %s & $%s$ \\ \hline" % (name, costs[name]))
+    print("  %s & $%s$ \\\\ \hline" % (name, costs[name]))
 print("\end{tabular}")
 print("\end{table}")
