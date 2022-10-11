@@ -51,4 +51,23 @@ ok  	github.com/cloudflare/pat-go	0.685s
 
 ### Formatting Results
 
-TODO(caw): describe how to invoke the formatting script
+To produce a LaTeX table of the performance benchmarks, run the [scripts/format_benchmarks.py](format_benchmarks.py) script on the benchmark output, like so:
+
+```
+$ go test -bench=. | python3 scripts/format_benchmarks.py
+\begin{table}[ht!]
+\label{tab:bench-computation-overhead}
+\caption{Computation cost for basic and rate-limited issuance protocols
+\begin{tabular}{|l|c|}
+{\bf Operation} & {\bf Time (ns/op)} \hline
+\hline
+  Basic Client Request & $0.0001206 $ \ \hline
+  Basic Issuer Evaluate & $0.001389 $ \ \hline
+  Basic Client Finalize & $0.0001130 $ \ \hline
+  Rate-Limited Client Request & $0.01281 $ \ \hline
+  Rate-Limited Issuer Evaluate & $0.01089 $ \ \hline
+  Rate-Limited Attester Process & $0.006324 $ \ \hline
+  Rate-Limited Client Finalize & $0.0001205 $ \ \hline
+\end{tabular}
+\end{table}
+```

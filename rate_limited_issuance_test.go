@@ -123,6 +123,7 @@ func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 	secretKey, err := ecdsa.GenerateKey(curve, rand.Reader)
 	blindKey, err := ecdsa.GenerateKey(curve, rand.Reader)
 	client := CreateRateLimitedClientFromSecret(secretKey.D.Bytes())
+	attester := RateLimitedAttester{}
 
 	challenge := make([]byte, 32)
 	rand.Reader.Read(challenge)
@@ -161,7 +162,7 @@ func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 		t.Error(err)
 	}
 
-	index, err := FinalizeIndex(publicKeyEnc, blindKey.D.Bytes(), blindedPublicKey)
+	index, err := attester.FinalizeIndex(publicKeyEnc, blindKey.D.Bytes(), blindedPublicKey)
 	if err != nil {
 		t.Error(err)
 	}
@@ -678,6 +679,8 @@ func BenchmarkRateLimitedTokenRoundTrip(b *testing.B) {
 	testOrigin := "origin.example"
 	issuer.AddOrigin(testOrigin)
 
+	attester := RateLimitedAttester{}
+
 	curve := elliptic.P384()
 	secretKey, err := ecdsa.GenerateKey(curve, rand.Reader)
 	blindKey, err := ecdsa.GenerateKey(curve, rand.Reader)
@@ -696,7 +699,12 @@ func BenchmarkRateLimitedTokenRoundTrip(b *testing.B) {
 		}
 	})
 
-	// XXX(caw): the attester request processing step is missing
+	b.Run("AttesterRequest", func(b *testing.B) {
+		err = attester.VerifyRequestWithBlind(*requestState.Request(), blindKey, &secretKey.PublicKey)
+		if err != nil {
+			b.Error(err)
+		}
+	})
 
 	var blindedSignature []byte
 	var blindedPublicKey []byte
@@ -707,9 +715,9 @@ func BenchmarkRateLimitedTokenRoundTrip(b *testing.B) {
 		}
 	})
 
-	b.Run("AttesterProcess", func(b *testing.B) {
+	b.Run("AttesterEvaluate", func(b *testing.B) {
 		publicKeyEnc := elliptic.MarshalCompressed(curve, client.secretKey.PublicKey.X, client.secretKey.PublicKey.Y)
-		_, err = FinalizeIndex(publicKeyEnc, blindKey.D.Bytes(), blindedPublicKey)
+		_, err = attester.FinalizeIndex(publicKeyEnc, blindKey.D.Bytes(), blindedPublicKey)
 		if err != nil {
 			b.Error(err)
 		}

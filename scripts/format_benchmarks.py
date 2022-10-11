@@ -5,8 +5,9 @@ nameMap = {
     "BenchmarkPublicTokenRoundTrip/IssuerEvaluate": "Basic Issuer Evaluate",
     "BenchmarkPublicTokenRoundTrip/ClientFinalize": "Basic Client Finalize",
     "BenchmarkRateLimitedTokenRoundTrip/ClientRequest": "Rate-Limited Client Request",
+    "BenchmarkRateLimitedTokenRoundTrip/AttesterRequest": "Rate-Limited Attester Request",
     "BenchmarkRateLimitedTokenRoundTrip/IssuerEvaluate": "Rate-Limited Issuer Evaluate",
-    "BenchmarkRateLimitedTokenRoundTrip/AttesterProcess": "Rate-Limited Attester Process",
+    "BenchmarkRateLimitedTokenRoundTrip/AttesterEvaluate": "Rate-Limited Attester Evaluate",
     "BenchmarkRateLimitedTokenRoundTrip/ClientFinalize": "Rate-Limited Client Finalize",
 }
 
@@ -15,8 +16,9 @@ orderedNames = [
     "Basic Issuer Evaluate",
     "Basic Client Finalize",
     "Rate-Limited Client Request",
+    "Rate-Limited Attester Request",
     "Rate-Limited Issuer Evaluate",
-    "Rate-Limited Attester Process",
+    "Rate-Limited Attester Evaluate",
     "Rate-Limited Client Finalize",
 ]
 
