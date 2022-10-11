@@ -687,7 +687,7 @@ func BenchmarkRateLimitedTokenRoundTrip(b *testing.B) {
 	rand.Reader.Read(challenge)
 
 	var requestState RateLimitedTokenRequestState
-	b.Run("Rate-Limited Client Blind", func(b *testing.B) {
+	b.Run("ClientRequest", func(b *testing.B) {
 		nonce := make([]byte, 32)
 		rand.Reader.Read(nonce)
 		requestState, err = client.CreateTokenRequest(challenge, nonce, blindKey.D.Bytes(), issuer.TokenKeyID(), issuer.TokenKey(), testOrigin, issuer.NameKey())
@@ -696,16 +696,18 @@ func BenchmarkRateLimitedTokenRoundTrip(b *testing.B) {
 		}
 	})
 
+	// XXX(caw): the attester request processing step is missing
+
 	var blindedSignature []byte
 	var blindedPublicKey []byte
-	b.Run("Rate-Limited Issuer Evaluate", func(b *testing.B) {
+	b.Run("IssuerEvaluate", func(b *testing.B) {
 		blindedSignature, blindedPublicKey, err = issuer.Evaluate(requestState.Request())
 		if err != nil {
 			b.Error(err)
 		}
 	})
 
-	b.Run("Rate-Limited Attester Index", func(b *testing.B) {
+	b.Run("AttesterProcess", func(b *testing.B) {
 		publicKeyEnc := elliptic.MarshalCompressed(curve, client.secretKey.PublicKey.X, client.secretKey.PublicKey.Y)
 		_, err = FinalizeIndex(publicKeyEnc, blindKey.D.Bytes(), blindedPublicKey)
 		if err != nil {
@@ -713,7 +715,7 @@ func BenchmarkRateLimitedTokenRoundTrip(b *testing.B) {
 		}
 	})
 
-	b.Run("Rate-Limited Client Finalize", func(b *testing.B) {
+	b.Run("ClientFinalize", func(b *testing.B) {
 		_, err := requestState.FinalizeToken(blindedSignature)
 		if err != nil {
 			b.Error(err)
