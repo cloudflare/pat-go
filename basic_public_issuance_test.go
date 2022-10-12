@@ -319,7 +319,7 @@ func BenchmarkPublicTokenRoundTrip(b *testing.B) {
 
 	var err error
 	var requestState BasicPublicTokenRequestState
-	b.Run("Basic Public Client Blind", func(b *testing.B) {
+	b.Run("ClientRequest", func(b *testing.B) {
 		nonce := make([]byte, 32)
 		rand.Reader.Read(nonce)
 
@@ -330,14 +330,14 @@ func BenchmarkPublicTokenRoundTrip(b *testing.B) {
 	})
 
 	var blindedSignature []byte
-	b.Run("Basic Public Client Evaluate", func(b *testing.B) {
+	b.Run("IssuerEvaluate", func(b *testing.B) {
 		blindedSignature, err = issuer.Evaluate(requestState.Request())
 		if err != nil {
 			b.Error(err)
 		}
 	})
 
-	b.Run("Basic Public Client Finalize", func(b *testing.B) {
+	b.Run("ClientFinalize", func(b *testing.B) {
 		_, err := requestState.FinalizeToken(blindedSignature)
 		if err != nil {
 			b.Error(err)

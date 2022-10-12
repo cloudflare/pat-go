@@ -1,6 +1,7 @@
 package pat
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -63,42 +64,6 @@ func (r *InnerTokenRequest) Unmarshal(data []byte) bool {
 	copy(r.paddedOrigin, paddedOriginName)
 
 	return true
-}
-
-func computeIndex(clientKey, indexKey []byte) ([]byte, error) {
-	hkdf := hkdf.New(sha512.New384, indexKey, clientKey, []byte("anon_issuer_origin_id"))
-	clientOriginIndex := make([]byte, crypto.SHA384.Size())
-	if _, err := io.ReadFull(hkdf, clientOriginIndex); err != nil {
-		return nil, err
-	}
-	return clientOriginIndex, nil
-}
-
-// https://ietf-wg-privacypass.github.io/draft-ietf-privacypass-rate-limit-tokens/draft-ietf-privacypass-rate-limit-tokens.html#name-attester-behavior-index-com
-func FinalizeIndex(clientKey, blindEnc, blindedRequestKeyEnc []byte) ([]byte, error) {
-	curve := elliptic.P384()
-	x, y := elliptic.UnmarshalCompressed(curve, blindedRequestKeyEnc)
-	blindedRequestKey := &ecdsa.PublicKey{
-		curve, x, y,
-	}
-
-	blindKey, err := ecdsa.CreateKey(curve, blindEnc)
-	if err != nil {
-		return nil, err
-	}
-
-	b := cryptobyte.NewBuilder(nil)
-	b.AddUint16(RateLimitedTokenType)
-	b.AddBytes([]byte("ClientBlind"))
-	ctx := b.BytesOrPanic()
-	indexKey, err := ecdsa.UnblindPublicKeyWithContext(curve, blindedRequestKey, blindKey, ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	indexKeyEnc := elliptic.MarshalCompressed(curve, indexKey.X, indexKey.Y)
-
-	return computeIndex(clientKey, indexKeyEnc)
 }
 
 type RateLimitedClient struct {
@@ -544,4 +509,100 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 	encryptedTokenResponse := append(responseNonce, cipher.Seal(nil, nonce, blindSignature, nil)...)
 
 	return encryptedTokenResponse, blindedRequestKeyEnc, nil
+}
+
+type RateLimitedAttester struct {
+}
+
+func (a RateLimitedAttester) VerifyRequest(tokenRequest RateLimitedTokenRequest) error {
+	// Deserialize the request key
+	curve := elliptic.P384()
+	x, y := elliptic.UnmarshalCompressed(curve, tokenRequest.RequestKey)
+	requestKey := &ecdsa.PublicKey{
+		curve, x, y,
+	}
+
+	scalarLen := (curve.Params().Params().BitSize + 7) / 8
+	r := new(big.Int).SetBytes(tokenRequest.Signature[:scalarLen])
+	s := new(big.Int).SetBytes(tokenRequest.Signature[scalarLen:])
+
+	// Verify the request signature
+	b := cryptobyte.NewBuilder(nil)
+	b.AddUint16(RateLimitedTokenType)
+	b.AddBytes(tokenRequest.RequestKey)
+	b.AddBytes(tokenRequest.NameKeyID)
+	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
+		b.AddBytes(tokenRequest.EncryptedTokenRequest)
+	})
+	message := b.BytesOrPanic()
+
+	hash := sha512.New384()
+	hash.Write(message)
+	digest := hash.Sum(nil)
+
+	valid := ecdsa.Verify(requestKey, digest, r, s)
+	if !valid {
+		return fmt.Errorf("Request signature invalid")
+	}
+
+	return nil
+}
+
+func (a RateLimitedAttester) VerifyRequestWithBlind(tokenRequest RateLimitedTokenRequest, blindKey *ecdsa.PrivateKey, clientKey *ecdsa.PublicKey) error {
+	err := a.VerifyRequest(tokenRequest)
+	if err != nil {
+		return nil
+	}
+
+	curve := elliptic.P384()
+	b := cryptobyte.NewBuilder(nil)
+	b.AddUint16(RateLimitedTokenType)
+	b.AddBytes([]byte("ClientBlind"))
+	ctx := b.BytesOrPanic()
+	blindedPublicKey, err := ecdsa.BlindPublicKeyWithContext(curve, clientKey, blindKey, ctx)
+	if err != nil {
+		return err
+	}
+	blindedPublicKeyEnc := elliptic.MarshalCompressed(curve, blindedPublicKey.X, blindedPublicKey.Y)
+	if !bytes.Equal(blindedPublicKeyEnc, tokenRequest.RequestKey) {
+		return fmt.Errorf("Mismatch blinded public key")
+	}
+
+	return nil
+}
+
+func computeIndex(clientKey, indexKey []byte) ([]byte, error) {
+	hkdf := hkdf.New(sha512.New384, indexKey, clientKey, []byte("anon_issuer_origin_id"))
+	clientOriginIndex := make([]byte, crypto.SHA384.Size())
+	if _, err := io.ReadFull(hkdf, clientOriginIndex); err != nil {
+		return nil, err
+	}
+	return clientOriginIndex, nil
+}
+
+// https://ietf-wg-privacypass.github.io/draft-ietf-privacypass-rate-limit-tokens/draft-ietf-privacypass-rate-limit-tokens.html#name-attester-behavior-index-com
+func (a RateLimitedAttester) FinalizeIndex(clientKey, blindEnc, blindedRequestKeyEnc []byte) ([]byte, error) {
+	curve := elliptic.P384()
+	x, y := elliptic.UnmarshalCompressed(curve, blindedRequestKeyEnc)
+	blindedRequestKey := &ecdsa.PublicKey{
+		curve, x, y,
+	}
+
+	blindKey, err := ecdsa.CreateKey(curve, blindEnc)
+	if err != nil {
+		return nil, err
+	}
+
+	b := cryptobyte.NewBuilder(nil)
+	b.AddUint16(RateLimitedTokenType)
+	b.AddBytes([]byte("ClientBlind"))
+	ctx := b.BytesOrPanic()
+	indexKey, err := ecdsa.UnblindPublicKeyWithContext(curve, blindedRequestKey, blindKey, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	indexKeyEnc := elliptic.MarshalCompressed(curve, indexKey.X, indexKey.Y)
+
+	return computeIndex(clientKey, indexKeyEnc)
 }

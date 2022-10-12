@@ -22,9 +22,9 @@ This will produce several JSON files:
 
 Examples for generating and verifying the test vectors can be found [in the Makefile](https://github.com/cloudflare/pat-go/blob/main/Makefile).
 
-## Benchmarks
+## PerformanceBenchmarks
 
-To compute benchmarks, run:
+To compute performance benchmarks, run:
 
 ```
 $ go test -bench=.
@@ -38,13 +38,36 @@ goos: darwin
 goarch: amd64
 pkg: github.com/cloudflare/pat-go
 cpu: Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz
-BenchmarkPublicTokenRoundTrip/Basic_Public_Client_Blind-12         	1000000000	         0.0001171 ns/op
-BenchmarkPublicTokenRoundTrip/Basic_Public_Client_Evaluate-12      	1000000000	         0.001317 ns/op
-BenchmarkPublicTokenRoundTrip/Basic_Public_Client_Finalize-12      	1000000000	         0.0001098 ns/op
-BenchmarkRateLimitedTokenRoundTrip/Rate-Limited_Client_Blind-12    	1000000000	         0.01648 ns/op
-BenchmarkRateLimitedTokenRoundTrip/Rate-Limited_Issuer_Evaluate-12 	1000000000	         0.01106 ns/op
-BenchmarkRateLimitedTokenRoundTrip/Rate-Limited_Attester_Index-12  	1000000000	         0.006282 ns/op
-BenchmarkRateLimitedTokenRoundTrip/Rate-Limited_Client_Finalize-12 	1000000000	         0.0001152 ns/op
+BenchmarkPublicTokenRoundTrip/ClientRequest-12         	1000000000	         0.0001208 ns/op
+BenchmarkPublicTokenRoundTrip/IssuerEvaluate-12        	1000000000	         0.001364 ns/op
+BenchmarkPublicTokenRoundTrip/ClientFinalize-12        	1000000000	         0.0001122 ns/op
+BenchmarkRateLimitedTokenRoundTrip/ClientRequest-12    	1000000000	         0.01773 ns/op
+BenchmarkRateLimitedTokenRoundTrip/IssuerEvaluate-12   	1000000000	         0.01098 ns/op
+BenchmarkRateLimitedTokenRoundTrip/AttesterProcess-12  	1000000000	         0.006127 ns/op
+BenchmarkRateLimitedTokenRoundTrip/ClientFinalize-12   	1000000000	         0.0001258 ns/op
 PASS
-ok  	github.com/cloudflare/pat-go	0.749s
+ok  	github.com/cloudflare/pat-go	0.685s
+```
+
+### Formatting Results
+
+To produce a LaTeX table of the performance benchmarks, run the [scripts/format_benchmarks.py](format_benchmarks.py) script on the benchmark output, like so:
+
+```
+$ go test -bench=. | python3 scripts/format_benchmarks.py
+\begin{table}[ht!]
+\label{tab:bench-computation-overhead}
+\caption{Computation cost for basic and rate-limited issuance protocols
+\begin{tabular}{|l|c|}
+{\bf Operation} & {\bf Time (ns/op)} \hline
+\hline
+  Basic Client Request & $0.0001206 $ \ \hline
+  Basic Issuer Evaluate & $0.001389 $ \ \hline
+  Basic Client Finalize & $0.0001130 $ \ \hline
+  Rate-Limited Client Request & $0.01281 $ \ \hline
+  Rate-Limited Issuer Evaluate & $0.01089 $ \ \hline
+  Rate-Limited Attester Process & $0.006324 $ \ \hline
+  Rate-Limited Client Finalize & $0.0001205 $ \ \hline
+\end{tabular}
+\end{table}
 ```
