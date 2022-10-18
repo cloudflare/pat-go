@@ -134,15 +134,15 @@ func TestSignatureDifferences(t *testing.T) {
 }
 
 func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
-	issuer := NewRateLimitedIssuer(loadPrivateKey(t))
+	issuer := NewRateLimitedIssuerV1(loadPrivateKey(t))
 	testOrigin := "origin.example"
 	issuer.AddOrigin(testOrigin)
 
 	curve := elliptic.P384()
 	secretKey, err := ecdsa.GenerateKey(curve, rand.Reader)
 	blindKey, err := ecdsa.GenerateKey(curve, rand.Reader)
-	client := NewRateLimitedClientFromSecret(secretKey.D.Bytes())
-	attester := NewRateLimitedAttester(NewMemoryClientStateCache())
+	client := NewRateLimitedClientV1FromSecret(secretKey.D.Bytes())
+	attester := NewRateLimitedAttesterV1(NewMemoryClientStateCache())
 
 	challenge := make([]byte, 32)
 	rand.Reader.Read(challenge)
@@ -224,7 +224,7 @@ func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 }
 
 func TestRateLimitedIssuerOriginRepeatFailure(t *testing.T) {
-	issuer := NewRateLimitedIssuer(loadPrivateKey(t))
+	issuer := NewRateLimitedIssuerV1(loadPrivateKey(t))
 	testOriginA := "A.example"
 	testOriginB := "B.example"
 
@@ -238,8 +238,8 @@ func TestRateLimitedIssuerOriginRepeatFailure(t *testing.T) {
 
 	secretKey, err := ecdsa.GenerateKey(curve, rand.Reader)
 	blindKey, err := ecdsa.GenerateKey(curve, rand.Reader)
-	client := NewRateLimitedClientFromSecret(secretKey.D.Bytes())
-	attester := NewRateLimitedAttester(NewMemoryClientStateCache())
+	client := NewRateLimitedClientV1FromSecret(secretKey.D.Bytes())
+	attester := NewRateLimitedAttesterV1(NewMemoryClientStateCache())
 
 	challenge := make([]byte, 32)
 	rand.Reader.Read(challenge)
@@ -783,16 +783,16 @@ func TestVectorVerifyAnonOriginID(t *testing.T) {
 }
 
 func BenchmarkRateLimitedTokenRoundTrip(b *testing.B) {
-	issuer := NewRateLimitedIssuer(loadPrivateKeyForBenchmark(b))
+	issuer := NewRateLimitedIssuerV1(loadPrivateKeyForBenchmark(b))
 	testOrigin := "origin.example"
 	issuer.AddOrigin(testOrigin)
 
-	attester := NewRateLimitedAttester(NewMemoryClientStateCache())
+	attester := NewRateLimitedAttesterV1(NewMemoryClientStateCache())
 
 	curve := elliptic.P384()
 	secretKey, err := ecdsa.GenerateKey(curve, rand.Reader)
 	blindKey, err := ecdsa.GenerateKey(curve, rand.Reader)
-	client := NewRateLimitedClientFromSecret(secretKey.D.Bytes())
+	client := NewRateLimitedClientV1FromSecret(secretKey.D.Bytes())
 
 	challenge := make([]byte, 32)
 	rand.Reader.Read(challenge)

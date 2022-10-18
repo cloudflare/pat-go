@@ -9,14 +9,14 @@ import (
 )
 
 func TestRequestMarshal(t *testing.T) {
-	issuer := NewRateLimitedIssuer(loadPrivateKey(t))
+	issuer := NewRateLimitedIssuerV1(loadPrivateKey(t))
 	testOrigin := "origin.example"
 	issuer.AddOrigin(testOrigin)
 
 	curve := elliptic.P384()
 	secretKey, err := ecdsa.GenerateKey(curve, rand.Reader)
 	blindKey, err := ecdsa.GenerateKey(curve, rand.Reader)
-	client := NewRateLimitedClientFromSecret(secretKey.D.Bytes())
+	client := NewRateLimitedClientV1FromSecret(secretKey.D.Bytes())
 
 	challenge := make([]byte, 32)
 	rand.Reader.Read(challenge)
