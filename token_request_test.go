@@ -16,7 +16,7 @@ func TestRequestMarshal(t *testing.T) {
 	curve := elliptic.P384()
 	secretKey, err := ecdsa.GenerateKey(curve, rand.Reader)
 	blindKey, err := ecdsa.GenerateKey(curve, rand.Reader)
-	client := CreateRateLimitedClientFromSecret(secretKey.D.Bytes())
+	client := NewRateLimitedClientFromSecret(secretKey.D.Bytes())
 
 	challenge := make([]byte, 32)
 	rand.Reader.Read(challenge)

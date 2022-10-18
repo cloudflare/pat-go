@@ -90,6 +90,25 @@ func loadPrivateKeyForBenchmark(b *testing.B) *rsa.PrivateKey {
 	return privateKey
 }
 
+type MemoryClientStateCache struct {
+	cache map[string]*ClientState
+}
+
+func NewMemoryClientStateCache() MemoryClientStateCache {
+	return MemoryClientStateCache{
+		cache: make(map[string]*ClientState),
+	}
+}
+
+func (c MemoryClientStateCache) Get(clientID string) (*ClientState, bool) {
+	state, ok := c.cache[clientID]
+	return state, ok
+}
+
+func (c MemoryClientStateCache) Put(clientID string, state *ClientState) {
+	c.cache[clientID] = state
+}
+
 func TestSignatureDifferences(t *testing.T) {
 	_, secretKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -122,11 +141,14 @@ func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 	curve := elliptic.P384()
 	secretKey, err := ecdsa.GenerateKey(curve, rand.Reader)
 	blindKey, err := ecdsa.GenerateKey(curve, rand.Reader)
-	client := CreateRateLimitedClientFromSecret(secretKey.D.Bytes())
-	attester := RateLimitedAttester{}
+	client := NewRateLimitedClientFromSecret(secretKey.D.Bytes())
+	attester := NewRateLimitedAttester(NewMemoryClientStateCache())
 
 	challenge := make([]byte, 32)
 	rand.Reader.Read(challenge)
+
+	anonymousOriginID := make([]byte, 32)
+	rand.Reader.Read(anonymousOriginID)
 
 	nonce := make([]byte, 32)
 	rand.Reader.Read(nonce)
@@ -136,6 +158,11 @@ func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 	originIndexKey := issuer.OriginIndexKey(testOrigin)
 
 	requestState, err := client.CreateTokenRequest(challenge, nonce, blindKey.D.Bytes(), tokenKeyID, tokenPublicKey, testOrigin, issuer.NameKey())
+	if err != nil {
+		t.Error(err)
+	}
+
+	err = attester.VerifyRequest(*requestState.Request(), blindKey, &client.secretKey.PublicKey, anonymousOriginID)
 	if err != nil {
 		t.Error(err)
 	}
@@ -162,7 +189,7 @@ func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 		t.Error(err)
 	}
 
-	index, err := attester.FinalizeIndex(publicKeyEnc, blindKey.D.Bytes(), blindedPublicKey)
+	index, err := attester.FinalizeIndex(publicKeyEnc, blindKey.D.Bytes(), blindedPublicKey, anonymousOriginID)
 	if err != nil {
 		t.Error(err)
 	}
@@ -196,7 +223,88 @@ func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 	}
 }
 
-///////
+func TestRateLimitedIssuerOriginRepeatFailure(t *testing.T) {
+	issuer := NewRateLimitedIssuer(loadPrivateKey(t))
+	testOriginA := "A.example"
+	testOriginB := "B.example"
+
+	curve := elliptic.P384()
+	sharedOriginIndexKey, err := ecdsa.GenerateKey(curve, rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	issuer.AddOriginWithIndexKey(testOriginA, sharedOriginIndexKey)
+	issuer.AddOriginWithIndexKey(testOriginB, sharedOriginIndexKey)
+
+	secretKey, err := ecdsa.GenerateKey(curve, rand.Reader)
+	blindKey, err := ecdsa.GenerateKey(curve, rand.Reader)
+	client := NewRateLimitedClientFromSecret(secretKey.D.Bytes())
+	attester := NewRateLimitedAttester(NewMemoryClientStateCache())
+
+	challenge := make([]byte, 32)
+	rand.Reader.Read(challenge)
+
+	anonymousOriginIDA := make([]byte, 32)
+	rand.Reader.Read(anonymousOriginIDA)
+
+	nonce := make([]byte, 32)
+	rand.Reader.Read(nonce)
+
+	tokenKeyID := issuer.TokenKeyID()
+	tokenPublicKey := issuer.TokenKey()
+
+	// Run request for origin A
+	requestState, err := client.CreateTokenRequest(challenge, nonce, blindKey.D.Bytes(), tokenKeyID, tokenPublicKey, testOriginA, issuer.NameKey())
+	if err != nil {
+		t.Error(err)
+	}
+	err = attester.VerifyRequest(*requestState.Request(), blindKey, &client.secretKey.PublicKey, anonymousOriginIDA)
+	if err != nil {
+		t.Error(err)
+	}
+
+	blindedSignature, blindedPublicKey, err := issuer.Evaluate(requestState.Request())
+	if err != nil {
+		t.Error(err)
+	}
+
+	publicKeyEnc := elliptic.MarshalCompressed(curve, client.secretKey.PublicKey.X, client.secretKey.PublicKey.Y)
+	_, err = attester.FinalizeIndex(publicKeyEnc, blindKey.D.Bytes(), blindedPublicKey, anonymousOriginIDA)
+	if err != nil {
+		t.Error(err)
+	}
+
+	_, err = requestState.FinalizeToken(blindedSignature)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Run request for origin B
+	anonymousOriginIDB := make([]byte, 32)
+	rand.Reader.Read(anonymousOriginIDB)
+
+	requestState, err = client.CreateTokenRequest(challenge, nonce, blindKey.D.Bytes(), tokenKeyID, tokenPublicKey, testOriginB, issuer.NameKey())
+	if err != nil {
+		t.Error(err)
+	}
+	err = attester.VerifyRequest(*requestState.Request(), blindKey, &client.secretKey.PublicKey, anonymousOriginIDB)
+	if err != nil {
+		t.Error(err)
+	}
+
+	blindedSignature, blindedPublicKey, err = issuer.Evaluate(requestState.Request())
+	if err != nil {
+		t.Error(err)
+	}
+
+	publicKeyEnc = elliptic.MarshalCompressed(curve, client.secretKey.PublicKey.X, client.secretKey.PublicKey.Y)
+	_, err = attester.FinalizeIndex(publicKeyEnc, blindKey.D.Bytes(), blindedPublicKey, anonymousOriginIDB)
+	if err == nil {
+		t.Error("Expected failure due to origin index repeat, but didn't fail")
+	}
+}
+
+// /////
 // Infallible Serialize / Deserialize
 func fatalOnError(t *testing.T, err error, msg string) {
 	realMsg := fmt.Sprintf("%s: %v", msg, err)
@@ -219,7 +327,7 @@ func mustHex(d []byte) string {
 	return hex.EncodeToString(d)
 }
 
-///////
+// /////
 // Index computation test vector structure
 type rawOriginEncryptionTestVector struct {
 	KEMID                 hpke.KEMID  `json:"kem_id"`
@@ -451,7 +559,7 @@ func TestVectorVerifyOriginEncryption(t *testing.T) {
 	verifyOriginEncryptionTestVectors(t, encoded)
 }
 
-///////
+// /////
 // Index computation test vector structure
 type rawAnonOriginIDTestVector struct {
 	ClientSecret  string `json:"sk_sign"`
@@ -679,15 +787,17 @@ func BenchmarkRateLimitedTokenRoundTrip(b *testing.B) {
 	testOrigin := "origin.example"
 	issuer.AddOrigin(testOrigin)
 
-	attester := RateLimitedAttester{}
+	attester := NewRateLimitedAttester(NewMemoryClientStateCache())
 
 	curve := elliptic.P384()
 	secretKey, err := ecdsa.GenerateKey(curve, rand.Reader)
 	blindKey, err := ecdsa.GenerateKey(curve, rand.Reader)
-	client := CreateRateLimitedClientFromSecret(secretKey.D.Bytes())
+	client := NewRateLimitedClientFromSecret(secretKey.D.Bytes())
 
 	challenge := make([]byte, 32)
 	rand.Reader.Read(challenge)
+	anonymousOriginID := make([]byte, 32)
+	rand.Reader.Read(anonymousOriginID)
 
 	var requestState RateLimitedTokenRequestState
 	b.Run("ClientRequest", func(b *testing.B) {
@@ -700,7 +810,7 @@ func BenchmarkRateLimitedTokenRoundTrip(b *testing.B) {
 	})
 
 	b.Run("AttesterRequest", func(b *testing.B) {
-		err = attester.VerifyRequestWithBlind(*requestState.Request(), blindKey, &secretKey.PublicKey)
+		err = attester.VerifyRequest(*requestState.Request(), blindKey, &secretKey.PublicKey, anonymousOriginID)
 		if err != nil {
 			b.Error(err)
 		}
@@ -717,7 +827,7 @@ func BenchmarkRateLimitedTokenRoundTrip(b *testing.B) {
 
 	b.Run("AttesterEvaluate", func(b *testing.B) {
 		publicKeyEnc := elliptic.MarshalCompressed(curve, client.secretKey.PublicKey.X, client.secretKey.PublicKey.Y)
-		_, err = attester.FinalizeIndex(publicKeyEnc, blindKey.D.Bytes(), blindedPublicKey)
+		_, err = attester.FinalizeIndex(publicKeyEnc, blindKey.D.Bytes(), blindedPublicKey, anonymousOriginID)
 		if err != nil {
 			b.Error(err)
 		}
