@@ -22,7 +22,7 @@ func TestRateLimitedIssuanceV2RoundTrip(t *testing.T) {
 	secretKeyEnc, _ := secretKey.MarshalBinary()
 	publicKey := group.Ristretto255.NewElement().MulGen(secretKey)
 	client := NewRateLimitedClientV2FromSecret(secretKeyEnc)
-	attester := NewRateLimitedAttesterV2(NewMemoryClientStateCache())
+	attester := NewRateLimitedAttesterV2()
 
 	challenge := make([]byte, 32)
 	rand.Reader.Read(challenge)

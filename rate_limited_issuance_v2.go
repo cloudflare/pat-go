@@ -693,23 +693,14 @@ func (i RateLimitedIssuerV2) Evaluate(req *RateLimitedTokenRequestV2) ([]byte, [
 	return encryptedTokenResponse, nil, nil
 }
 
-type ClientStateV2 struct {
-	originIndices map[string]string // map from anonymous origin ID to anonymous issuer origin ID
-	clientIndices map[string]string // map from anonymous issuer origin ID to anonyous origin ID
-	originCounts  map[string]int    // map from anonymous issuer origin ID to per-origin count
-}
-
 type RateLimitedAttesterV2 struct {
-	cache ClientStateCache
 }
 
-func NewRateLimitedAttesterV2(cache ClientStateCache) *RateLimitedAttesterV2 {
-	return &RateLimitedAttesterV2{
-		cache: cache,
-	}
+func NewRateLimitedAttesterV2() RateLimitedAttesterV2 {
+	return RateLimitedAttesterV2{}
 }
 
-func (a *RateLimitedAttesterV2) VerifyRequest(tokenRequest RateLimitedTokenRequestV2, clientKey group.Element, anonymousOrigin []byte, proofEnc []byte) error {
+func (a RateLimitedAttesterV2) VerifyRequest(tokenRequest RateLimitedTokenRequestV2, clientKey group.Element, anonymousOrigin []byte, proofEnc []byte) error {
 	proof := &Proof{}
 	ok := proof.Unmarshal(proofEnc)
 	if !ok {
