@@ -1,6 +1,9 @@
 test:
 	go test
 
+bench:
+	go test -bench=.
+
 vectors: test
 	ED25519_BLINDING_TEST_VECTORS_OUT=ed25519-blinding-test-vectors.json go test -v -run TestVectorGenerateEd25519Blinding
 	ECDSA_BLINDING_TEST_VECTORS_OUT=ecdsa-blinding-test-vectors.json go test -v -run TestVectorGenerateECDSABlinding

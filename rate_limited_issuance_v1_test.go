@@ -782,7 +782,7 @@ func TestVectorVerifyAnonOriginID(t *testing.T) {
 	verifyAnonOriginIDTestVectors(t, encoded)
 }
 
-func BenchmarkRateLimitedTokenRoundTrip(b *testing.B) {
+func BenchmarkRateLimitedV1TokenRoundTrip(b *testing.B) {
 	issuer := NewRateLimitedIssuerV1(loadPrivateKeyForBenchmark(b))
 	testOrigin := "origin.example"
 	issuer.AddOrigin(testOrigin)
