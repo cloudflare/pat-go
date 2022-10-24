@@ -801,42 +801,52 @@ func BenchmarkRateLimitedTokenRoundTrip(b *testing.B) {
 
 	var requestState RateLimitedTokenRequestState
 	b.Run("ClientRequest", func(b *testing.B) {
-		nonce := make([]byte, 32)
-		rand.Reader.Read(nonce)
-		requestState, err = client.CreateTokenRequest(challenge, nonce, blindKey.D.Bytes(), issuer.TokenKeyID(), issuer.TokenKey(), testOrigin, issuer.NameKey())
-		if err != nil {
-			b.Error(err)
+		for n := 0; n < b.N; n++ {
+			nonce := make([]byte, 32)
+			rand.Reader.Read(nonce)
+			requestState, err = client.CreateTokenRequest(challenge, nonce, blindKey.D.Bytes(), issuer.TokenKeyID(), issuer.TokenKey(), testOrigin, issuer.NameKey())
+			if err != nil {
+				b.Error(err)
+			}
 		}
 	})
 
 	b.Run("AttesterRequest", func(b *testing.B) {
-		err = attester.VerifyRequest(*requestState.Request(), blindKey, &secretKey.PublicKey, anonymousOriginID)
-		if err != nil {
-			b.Error(err)
+		for n := 0; n < b.N; n++ {
+			err = attester.VerifyRequest(*requestState.Request(), blindKey, &secretKey.PublicKey, anonymousOriginID)
+			if err != nil {
+				b.Error(err)
+			}
 		}
 	})
 
 	var blindedSignature []byte
 	var blindedPublicKey []byte
 	b.Run("IssuerEvaluate", func(b *testing.B) {
-		blindedSignature, blindedPublicKey, err = issuer.Evaluate(requestState.Request())
-		if err != nil {
-			b.Error(err)
+		for n := 0; n < b.N; n++ {
+			blindedSignature, blindedPublicKey, err = issuer.Evaluate(requestState.Request())
+			if err != nil {
+				b.Error(err)
+			}
 		}
 	})
 
 	b.Run("AttesterEvaluate", func(b *testing.B) {
-		publicKeyEnc := elliptic.MarshalCompressed(curve, client.secretKey.PublicKey.X, client.secretKey.PublicKey.Y)
-		_, err = attester.FinalizeIndex(publicKeyEnc, blindKey.D.Bytes(), blindedPublicKey, anonymousOriginID)
-		if err != nil {
-			b.Error(err)
+		for n := 0; n < b.N; n++ {
+			publicKeyEnc := elliptic.MarshalCompressed(curve, client.secretKey.PublicKey.X, client.secretKey.PublicKey.Y)
+			_, err = attester.FinalizeIndex(publicKeyEnc, blindKey.D.Bytes(), blindedPublicKey, anonymousOriginID)
+			if err != nil {
+				b.Error(err)
+			}
 		}
 	})
 
 	b.Run("ClientFinalize", func(b *testing.B) {
-		_, err := requestState.FinalizeToken(blindedSignature)
-		if err != nil {
-			b.Error(err)
+		for n := 0; n < b.N; n++ {
+			_, err := requestState.FinalizeToken(blindedSignature)
+			if err != nil {
+				b.Error(err)
+			}
 		}
 	})
 }
