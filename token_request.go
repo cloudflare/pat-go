@@ -174,7 +174,7 @@ func (r *RateLimitedTokenRequest) Unmarshal(data []byte) bool {
 type RateLimitedTokenRequestV2 struct {
 	raw                       []byte
 	NameKeyID                 []byte // 32 bytes
-	AnonymousOriginCommitment []byte // 32 bytes
+	ClientKeyCommitment		  []byte // 32 bytes
 	EncryptedTokenRequest     []byte // 16-bit length prefixed slice
 }
 
@@ -185,7 +185,7 @@ func (r RateLimitedTokenRequestV2) Type() uint16 {
 
 func (r RateLimitedTokenRequestV2) Equal(r2 RateLimitedTokenRequestV2) bool {
 	if bytes.Equal(r.NameKeyID, r2.NameKeyID) &&
-		bytes.Equal(r.AnonymousOriginCommitment, r2.AnonymousOriginCommitment) &&
+		bytes.Equal(r.ClientKeyCommitment, r2.ClientKeyCommitment) &&
 		bytes.Equal(r.EncryptedTokenRequest, r2.EncryptedTokenRequest) {
 		return true
 	}
@@ -201,7 +201,7 @@ func (r *RateLimitedTokenRequestV2) Marshal() []byte {
 	b := cryptobyte.NewBuilder(nil)
 	b.AddUint16(RateLimitedTokenType)
 	b.AddBytes(r.NameKeyID)
-	b.AddBytes(r.AnonymousOriginCommitment)
+	b.AddBytes(r.ClientKeyCommitment)
 	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
 		b.AddBytes(r.EncryptedTokenRequest)
 	})
@@ -217,7 +217,7 @@ func (r *RateLimitedTokenRequestV2) Unmarshal(data []byte) bool {
 	if !s.ReadUint16(&tokenType) ||
 		tokenType != RateLimitedTokenType ||
 		!s.ReadBytes(&r.NameKeyID, 32) ||
-		!s.ReadBytes(&r.AnonymousOriginCommitment, 32) {
+		!s.ReadBytes(&r.ClientKeyCommitment, 32) {
 		return false
 	}
 

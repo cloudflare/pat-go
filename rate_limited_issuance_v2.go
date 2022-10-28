@@ -1,7 +1,6 @@
 package pat
 
 import (
-	"bytes"
 	"crypto"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -21,7 +20,8 @@ type InnerTokenRequestV2 struct {
 	raw          []byte
 	tokenKeyId   uint8
 	blindedMsg   []byte
-	randomNonce  []byte
+	clientPseudonym []byte
+	proof  		 []byte
 	paddedOrigin []byte
 }
 
@@ -33,7 +33,8 @@ func (r *InnerTokenRequestV2) Marshal() []byte {
 	b := cryptobyte.NewBuilder(nil)
 	b.AddUint8(r.tokenKeyId)
 	b.AddBytes(r.blindedMsg)
-	b.AddBytes(r.randomNonce)
+	b.AddBytes(r.clientPseudonym)
+	b.AddBytes(r.proof)
 	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
 		b.AddBytes([]byte(r.paddedOrigin))
 	})
@@ -45,7 +46,8 @@ func (r *InnerTokenRequestV2) Marshal() []byte {
 func (r *InnerTokenRequestV2) Unmarshal(data []byte) bool {
 	s := cryptobyte.String(data)
 
-	if !s.ReadUint8(&r.tokenKeyId) || !s.ReadBytes(&r.blindedMsg, 256) || !s.ReadBytes(&r.randomNonce, 32) {
+	if !s.ReadUint8(&r.tokenKeyId) || !s.ReadBytes(&r.blindedMsg, 256) || !s.ReadBytes(&r.clientPseudonym, 32) ||
+		!s.ReadBytes(&r.proof, 32*3) {
 		return false
 	}
 
@@ -60,6 +62,12 @@ func (r *InnerTokenRequestV2) Unmarshal(data []byte) bool {
 }
 
 func cvrfEval(secret group.Scalar, randomness group.Scalar, input []byte) (group.Element, Commitment, Proof, error) {
+	prfValue, commitment, proof, err, _, _ := cvrfEvalDebug(secret, randomness, input)
+	return prfValue, commitment, proof, err
+}
+
+func cvrfEvalDebug(secret group.Scalar, randomness group.Scalar, input []byte) (group.Element, Commitment, Proof, error, 
+	group.Element, group.Element) {
 	// 1. Evaluate the PRF: O = g^{1 / (x + i)}
 	originScalar := group.Ristretto255.HashToScalar(input, []byte("OriginScalar"))
 	prfSecret := group.Ristretto255.NewScalar()
@@ -67,117 +75,118 @@ func cvrfEval(secret group.Scalar, randomness group.Scalar, input []byte) (group
 	prfSecret.Inv(prfSecret)
 	prfValue := group.Ristretto255.NewElement()
 	prfValue.MulGen(prfSecret)
-	anonymousOriginEnc, err := prfValue.MarshalBinary()
+	clientPseudonymEnc, err := prfValue.MarshalBinary()
 	if err != nil {
-		return nil, Commitment{}, Proof{}, err
+		return nil, Commitment{}, Proof{}, err, nil, nil
 	}
 
-	// 2. Generate a Pedersen Commitment to the origin scalar using the provided randomness, g^ih^r
+	// 2. Generate a  commitment to the secret key using the provided randomness, g^x h^r
 	_, genTwo := commitmentGenerators()
-	commitment := computeCommitment(originScalar, randomness)
+	commitment := computeCommitment(secret, randomness)
 	commitmentEnc := commitment.Marshal()
 
 	// 3. Generate the proof
 	alphaX := group.Ristretto255.RandomScalar(rand.Reader)
 	alphaR := group.Ristretto255.RandomScalar(rand.Reader)
-	alphaI := group.Ristretto255.RandomScalar(rand.Reader)
 
+	// u1 = g^alphaX h^alphaR
+	u1g := group.Ristretto255.NewElement()
+	u1g.MulGen(alphaX)
+	u1h := group.Ristretto255.NewElement()
+	u1h.Mul(genTwo, alphaR)
 	u1 := group.Ristretto255.NewElement()
-	u1.MulGen(alphaX)
+	u1.Add(u1g,u1h)
 
-	x1 := group.Ristretto255.NewElement()
-	x1.MulGen(alphaI)
-	x2 := group.Ristretto255.NewElement()
-	x2.Mul(genTwo, alphaR)
+
+	// u2 = O^alphaX
 	u2 := group.Ristretto255.NewElement()
-	u2.Add(x1, x2)
-
-	x3 := group.Ristretto255.NewScalar()
-	x3.Add(alphaX, alphaI)
-	u3 := group.Ristretto255.NewElement()
-	u3.Mul(prfValue, x3)
+	u2.Mul(prfValue, alphaX)
 
 	// Generate challenge...
 	u1Enc, err := u1.MarshalBinary()
 	if err != nil {
-		return nil, Commitment{}, Proof{}, err
+		return nil, Commitment{}, Proof{}, err, nil, nil
 	}
 	u2Enc, err := u2.MarshalBinary()
 	if err != nil {
-		return nil, Commitment{}, Proof{}, err
-	}
-	u3Enc, err := u3.MarshalBinary()
-	if err != nil {
-		return nil, Commitment{}, Proof{}, err
-	}
-	YEnc, err := group.Ristretto255.NewElement().MulGen(secret).MarshalBinary()
-	if err != nil {
-		return nil, Commitment{}, Proof{}, err
+		return nil, Commitment{}, Proof{}, err, nil, nil
 	}
 
 	challengeInput := []byte{}
-	challengeInput = append(challengeInput, YEnc...)
 	challengeInput = append(challengeInput, commitmentEnc...)
-	challengeInput = append(challengeInput, anonymousOriginEnc...)
+	challengeInput = append(challengeInput, clientPseudonymEnc...)
 	challengeInput = append(challengeInput, u1Enc...)
 	challengeInput = append(challengeInput, u2Enc...)
-	challengeInput = append(challengeInput, u3Enc...)
 	challengeVal := group.Ristretto255.HashToScalar(challengeInput, []byte("Challenge"))
 
 	betaX := group.Ristretto255.NewScalar()
 	betaX.Add(alphaX, group.Ristretto255.NewScalar().Mul(secret, challengeVal))
 	betaR := group.Ristretto255.NewScalar()
 	betaR.Add(alphaR, group.Ristretto255.NewScalar().Mul(randomness, challengeVal))
-	betaI := group.Ristretto255.NewScalar()
-	betaI.Add(alphaI, group.Ristretto255.NewScalar().Mul(originScalar, challengeVal))
+	
 
 	proof := Proof{
 		challenge: challengeVal,
 		betaX:     betaX,
 		betaR:     betaR,
-		betaI:     betaI,
 	}
 
-	return prfValue, commitment, proof, nil
+	return prfValue, commitment, proof, nil, u1, u2
+}
+func cvrfVerify(output []byte, proof Proof, input []byte, commitment Commitment) error {
+	return cvrfVerifyDebug(output, proof, input, commitment, nil, nil, nil)
 }
 
-func cvrfVerify(public group.Element, output []byte, proof Proof, commitment Commitment) error {
-	_, genTwo := commitmentGenerators()
+func cvrfVerifyDebug(output []byte, proof Proof, input []byte, commitment Commitment, cheatPrfValue group.Element, 
+		cheatu1, cheatu2 group.Element) error {
+	genOne, genTwo := commitmentGenerators()
 	prfValue := group.Ristretto255.NewElement()
 	err := prfValue.UnmarshalBinary(output)
 	if err != nil {
 		return err
 	}
 
+	if cheatPrfValue != nil && !prfValue.IsEqual(cheatPrfValue) {
+		return fmt.Errorf("Decoded PRF value doesn't match!\n\toriginal=%v\n\tdecoded=%v\n", prfValue, cheatPrfValue)
+	}
+
+	// u1 = g^betaX h^betaR / C^c
 	x1 := group.Ristretto255.NewElement()
-	x1.Mul(public, proof.challenge)
+	x1.Mul(commitment.commitment, proof.challenge)
 	x1.Neg(x1)
 	x2 := group.Ristretto255.NewElement()
 	x2.MulGen(proof.betaX)
-	u1 := group.Ristretto255.NewElement()
-	u1.Add(x1, x2)
-
 	x3 := group.Ristretto255.NewElement()
-	x3.MulGen(proof.betaI)
+	x3.Mul(genTwo, proof.betaR)
 	x4 := group.Ristretto255.NewElement()
-	x4.Mul(genTwo, proof.betaR)
-	x4.Add(x3, x4)
+	x4.Add(x2, x3)
+	u1 := group.Ristretto255.NewElement()
+	u1.Add(x1, x4)
 
+	if cheatu1 != nil && !u1.IsEqual(cheatu1) {
+		return fmt.Errorf("Computed u1 is wrong")
+	}
+
+	// u2 = id^betaX / (g^c / id^(Oc))
 	x5 := group.Ristretto255.NewElement()
-	x5.Mul(commitment.commitment, proof.challenge)
+	originScalar := group.Ristretto255.HashToScalar(input, []byte("OriginScalar"))
+	x5.Mul(prfValue, originScalar)
 	x5.Neg(x5)
-	u2 := group.Ristretto255.NewElement()
-	u2.Add(x4, x5)
-
-	x6 := group.Ristretto255.NewScalar()
-	x6.Add(proof.betaX, proof.betaI)
+	x6 := group.Ristretto255.NewElement()
+	x6.Add(genOne, x5)
 	x7 := group.Ristretto255.NewElement()
-	x7.Mul(prfValue, x6)
+	x7.Mul(x6, proof.challenge)
+	x7.Neg(x7)
+
 	x8 := group.Ristretto255.NewElement()
-	x8.Mul(group.Ristretto255.Generator(), proof.challenge)
-	x8.Neg(x8)
-	u3 := group.Ristretto255.NewElement()
-	u3.Add(x7, x8)
+	x8.Mul(prfValue, proof.betaX)
+
+	u2 := group.Ristretto255.NewElement()
+	u2.Add(x7, x8)
+
+	if cheatu2 != nil && !u2.IsEqual(cheatu2) {
+		return fmt.Errorf("Computed u2 is wrong")
+	}
 
 	// Generate challenge
 	u1Enc, err := u1.MarshalBinary()
@@ -188,22 +197,12 @@ func cvrfVerify(public group.Element, output []byte, proof Proof, commitment Com
 	if err != nil {
 		return err
 	}
-	u3Enc, err := u3.MarshalBinary()
-	if err != nil {
-		return err
-	}
-	YEnc, err := public.MarshalBinary()
-	if err != nil {
-		return err
-	}
 
 	challengeInput := []byte{}
-	challengeInput = append(challengeInput, YEnc...)
 	challengeInput = append(challengeInput, commitment.Marshal()...)
 	challengeInput = append(challengeInput, output...)
 	challengeInput = append(challengeInput, u1Enc...)
 	challengeInput = append(challengeInput, u2Enc...)
-	challengeInput = append(challengeInput, u3Enc...)
 	challengeVal := group.Ristretto255.HashToScalar(challengeInput, []byte("Challenge"))
 
 	if !challengeVal.IsEqual(proof.challenge) {
@@ -231,7 +230,9 @@ func NewRateLimitedClientV2FromSecret(secret []byte) RateLimitedClientV2 {
 	}
 }
 
-func encryptOriginTokenRequestV2(nameKey EncapKey, tokenKeyID uint8, blindedMessage []byte, originName string, randomNonce []byte, proofEnc []byte) ([]byte, []byte, []byte, error) {
+func encryptOriginTokenRequestV2(nameKey EncapKey, tokenKeyID uint8, blindedMessage []byte, 
+	 originName string, clientPseudonym []byte, proofEnc []byte, 
+	 commitment Commitment) ([]byte, []byte, []byte, error) {
 	issuerKeyEnc := nameKey.Marshal()
 	issuerKeyID := sha256.Sum256(issuerKeyEnc)
 
@@ -247,12 +248,14 @@ func encryptOriginTokenRequestV2(nameKey EncapKey, tokenKeyID uint8, blindedMess
 	b.AddUint16(uint16(nameKey.suite.AEAD.ID()))
 	b.AddUint16(RateLimitedTokenType)
 	b.AddBytes(issuerKeyID[:])
+	b.AddBytes(commitment.raw)
 	b.AddBytes(nil)
 
 	tokenRequest := InnerTokenRequestV2{
 		blindedMsg:   blindedMessage,
 		tokenKeyId:   tokenKeyID,
-		randomNonce:  randomNonce,
+		clientPseudonym: clientPseudonym,
+		proof: proofEnc,
 		paddedOrigin: padOriginName(originName),
 	}
 	input := tokenRequest.Marshal()
@@ -271,7 +274,6 @@ type Proof struct {
 	challenge group.Scalar
 	betaX     group.Scalar
 	betaR     group.Scalar
-	betaI     group.Scalar
 }
 
 func (r *Proof) Marshal() []byte {
@@ -291,16 +293,11 @@ func (r *Proof) Marshal() []byte {
 	if err != nil {
 		panic(err)
 	}
-	betaIEnc, err := r.betaI.MarshalBinary()
-	if err != nil {
-		panic(err)
-	}
 
 	b := cryptobyte.NewBuilder(nil)
 	b.AddBytes(challengeEnc)
 	b.AddBytes(betaXEnc)
 	b.AddBytes(betaREnc)
-	b.AddBytes(betaIEnc)
 
 	r.raw = b.BytesOrPanic()
 	return r.raw
@@ -312,8 +309,7 @@ func (r *Proof) Unmarshal(data []byte) bool {
 	challengeEnc := make([]byte, 32)
 	betaXEnc := make([]byte, 32)
 	betaREnc := make([]byte, 32)
-	betaIEnc := make([]byte, 32)
-	if !s.ReadBytes(&challengeEnc, 32) || !s.ReadBytes(&betaXEnc, 32) || !s.ReadBytes(&betaREnc, 32) || !s.ReadBytes(&betaIEnc, 32) {
+	if !s.ReadBytes(&challengeEnc, 32) || !s.ReadBytes(&betaXEnc, 32) || !s.ReadBytes(&betaREnc, 32) {
 		return false
 	}
 
@@ -335,18 +331,16 @@ func (r *Proof) Unmarshal(data []byte) bool {
 		return false
 	}
 
-	betaI := group.Ristretto255.NewScalar()
-	err = betaI.UnmarshalBinary(betaIEnc)
-	if err != nil {
-		return false
-	}
-
 	r.challenge = challenge
 	r.betaX = betaX
 	r.betaR = betaR
-	r.betaI = betaI
 
 	return true
+}
+
+func (p *Proof) IsEqual(other *Proof) bool {
+	return other != nil && p.challenge.IsEqual(other.challenge) && p.betaX.IsEqual(other.betaX) && 
+		p.betaR.IsEqual(other.betaR)
 }
 
 type Commitment struct {
@@ -392,7 +386,7 @@ func (r *Commitment) Unmarshal(data []byte) bool {
 type RateLimitedTokenRequestStateV2 struct {
 	tokenInput      []byte
 	proof           []byte
-	anonymousOrigin []byte
+	randomness		[]byte
 	request         *RateLimitedTokenRequestV2
 	encapSecret     []byte
 	encapEnc        []byte
@@ -491,7 +485,7 @@ func (c RateLimitedClientV2) CreateTokenRequest(challenge, nonce []byte, tokenKe
 	if err != nil {
 		return RateLimitedTokenRequestStateV2{}, err
 	}
-	anonymousOriginEnc, err := prfValue.MarshalBinary()
+	clientPseudonymEnc, err := prfValue.MarshalBinary()
 	if err != nil {
 		return RateLimitedTokenRequestStateV2{}, err
 	}
@@ -511,21 +505,24 @@ func (c RateLimitedClientV2) CreateTokenRequest(challenge, nonce []byte, tokenKe
 		return RateLimitedTokenRequestStateV2{}, err
 	}
 
-	nameKeyID, encryptedTokenRequest, secret, err := encryptOriginTokenRequestV2(nameKey, tokenKeyID[0], blindedMessage, originName, proofRandomnessEnc, proof.Marshal())
+	commitment.Marshal()
+
+	nameKeyID, encryptedTokenRequest, secret, err := encryptOriginTokenRequestV2(nameKey, 
+		tokenKeyID[0], blindedMessage, originName, clientPseudonymEnc, proof.Marshal(), commitment)
 	if err != nil {
 		return RateLimitedTokenRequestStateV2{}, err
 	}
 
 	request := &RateLimitedTokenRequestV2{
 		NameKeyID:                 nameKeyID,
-		AnonymousOriginCommitment: commitment.Marshal(),
+		ClientKeyCommitment: commitment.Marshal(),
 		EncryptedTokenRequest:     encryptedTokenRequest,
 	}
 
 	requestState := RateLimitedTokenRequestStateV2{
 		tokenInput:      tokenInput,
 		proof:           proof.Marshal(),
-		anonymousOrigin: anonymousOriginEnc,
+		randomness: 	 proofRandomnessEnc,
 		request:         request,
 		encapSecret:     secret,
 		encapEnc:        encryptedTokenRequest[0:nameKey.suite.KEM.PublicKeySize()],
@@ -594,7 +591,8 @@ func (i *RateLimitedIssuerV2) TokenKeyID() []byte {
 	return keyID[:]
 }
 
-func decryptOriginTokenRequestV2(nameKey PrivateEncapKey, encryptedTokenRequest []byte, proofEnc []byte) (InnerTokenRequestV2, []byte, error) {
+func decryptOriginTokenRequestV2(nameKey PrivateEncapKey, encryptedTokenRequest []byte, 
+	encodedCommitment []byte) (InnerTokenRequestV2, []byte, error) {
 	issuerConfigID := sha256.Sum256(nameKey.Public().Marshal())
 
 	// Decrypt the origin name
@@ -605,6 +603,7 @@ func decryptOriginTokenRequestV2(nameKey PrivateEncapKey, encryptedTokenRequest 
 	b.AddUint16(uint16(nameKey.suite.AEAD.ID()))
 	b.AddUint16(RateLimitedTokenType)
 	b.AddBytes(issuerConfigID[:])
+	b.AddBytes(encodedCommitment)
 	b.AddBytes(nil)
 	aad := b.BytesOrPanic()
 
@@ -634,7 +633,7 @@ func decryptOriginTokenRequestV2(nameKey PrivateEncapKey, encryptedTokenRequest 
 // https://ietf-wg-privacypass.github.io/draft-ietf-privacypass-rate-limit-tokens/draft-ietf-privacypass-rate-limit-tokens.html#name-issuer-to-attester-response
 func (i RateLimitedIssuerV2) Evaluate(req *RateLimitedTokenRequestV2) ([]byte, []byte, error) {
 	// Recover and validate the origin name
-	originTokenRequest, secret, err := decryptOriginTokenRequestV2(i.nameKey, req.EncryptedTokenRequest, nil)
+	originTokenRequest, secret, err := decryptOriginTokenRequestV2(i.nameKey, req.EncryptedTokenRequest, req.ClientKeyCommitment)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -646,19 +645,23 @@ func (i RateLimitedIssuerV2) Evaluate(req *RateLimitedTokenRequestV2) ([]byte, [
 		return nil, nil, fmt.Errorf("Unknown origin: %s", originName)
 	}
 
-	// Compute and verify the origin commitment
-	proofRandomness := group.Ristretto255.NewScalar()
-	err = proofRandomness.UnmarshalBinary(originTokenRequest.randomNonce)
+
+	commitment := &Commitment{}
+	ok = commitment.Unmarshal(req.ClientKeyCommitment)
+	if !ok {
+		return nil, nil, fmt.Errorf("Failed to decode commitment")
+	}
+
+	proof := &Proof{}
+	ok = proof.Unmarshal(originTokenRequest.proof)
+	if !ok {
+		return nil, nil, fmt.Errorf("Failed to decode proof")
+	}
+	err = cvrfVerify(originTokenRequest.clientPseudonym, *proof, []byte(originName), *commitment)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	originScalar := group.Ristretto255.HashToScalar([]byte(originName), []byte("OriginScalar"))
-	commitment := computeCommitment(originScalar, proofRandomness)
-	commitmentEnc := commitment.Marshal()
-	if !bytes.Equal(commitmentEnc, req.AnonymousOriginCommitment) {
-		return nil, nil, err
-	}
 
 	// Compute the blinded signature
 	signer := blindrsa.NewRSASigner(i.tokenKey)
@@ -700,23 +703,31 @@ func NewRateLimitedAttesterV2() RateLimitedAttesterV2 {
 	return RateLimitedAttesterV2{}
 }
 
-func (a RateLimitedAttesterV2) VerifyRequest(tokenRequest RateLimitedTokenRequestV2, clientKey group.Element, anonymousOrigin []byte, proofEnc []byte) error {
-	proof := &Proof{}
-	ok := proof.Unmarshal(proofEnc)
-	if !ok {
-		return fmt.Errorf("Failed to decode proof")
-	}
-
+func (a RateLimitedAttesterV2) VerifyRequest(tokenRequest RateLimitedTokenRequestV2, clientKey group.Element, randomnessEnc []byte) error {
 	commitment := &Commitment{}
-	ok = commitment.Unmarshal(tokenRequest.AnonymousOriginCommitment)
+	ok := commitment.Unmarshal(tokenRequest.ClientKeyCommitment)
 	if !ok {
 		return fmt.Errorf("Failed to decode commitment")
 	}
 
-	err := cvrfVerify(clientKey, anonymousOrigin, *proof, *commitment)
+	randomness := group.Ristretto255.NewScalar()
+	err := randomness.UnmarshalBinary(randomnessEnc)
 	if err != nil {
 		return err
 	}
+
+	_, genTwo := commitmentGenerators()
+
+	x1 := group.Ristretto255.NewElement()
+	x1.Mul(genTwo, randomness)
+
+	x2 := group.Ristretto255.NewElement()
+	x2.Add(clientKey, x1)
+
+	if !x2.IsEqual(commitment.commitment) {
+		return fmt.Errorf("Client key commitment incorrect")
+	}
+
 
 	return nil
 }
