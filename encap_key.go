@@ -141,3 +141,34 @@ func UnmarshalEncapKey(data []byte) (EncapKey, error) {
 		publicKey: publicKey,
 	}, nil
 }
+
+// SetPrivateKey is used to import private key in byte slice
+func (k *EncapKey) SetPrivateKey(privateKey []byte) error {
+	// deserialize into KEMPrivateKey
+	priv, err := k.suite.KEM.DeserializePrivateKey(privateKey)
+	if err != nil {
+		return fmt.Errorf("failed to deserialize private key: %w", err)
+	}
+
+	// confirm if the public key derived from the input matches k's public key
+	pub := k.suite.KEM.SerializePublicKey(k.publicKey)
+	inputPub := k.suite.KEM.SerializePublicKey(priv.PublicKey())
+	if !bytes.Equal(inputPub, pub) {
+		return fmt.Errorf("input private key does match")
+	}
+
+	// set private key if equal
+	k.privateKey = priv
+
+	return nil
+}
+
+// KEMPrivateKey returns the private key
+func (k EncapKey) KEMPrivateKey(data []byte) hpke.KEMPrivateKey {
+	return k.privateKey
+}
+
+// SerializePrivateKey returns the serialized private key in byte slice
+func (k EncapKey) SerializePrivateKey() []byte {
+	return k.suite.KEM.SerializePrivateKey(k.privateKey)
+}
