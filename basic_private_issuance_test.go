@@ -55,12 +55,12 @@ func TestBasicPrivateIssuanceRoundTrip(t *testing.T) {
 	}
 }
 
-///////
+// /////
 // Basic issuance test vector
 type rawBasicPrivateIssuanceTestVector struct {
 	PrivateKey    string `json:"skS"`
 	PublicKey     string `json:"pkS"`
-	Challenge     string `json:"challenge"`
+	Challenge     string `json:"token_challenge"`
 	Nonce         string `json:"nonce"`
 	Blind         string `json:"blind"`
 	TokenRequest  string `json:"token_request"`
@@ -174,8 +174,8 @@ func generateBasicPrivateIssuanceBlindingTestVector(t *testing.T) BasicPrivateIs
 	issuer := NewBasicPrivateIssuer(tokenKey)
 	client := BasicPrivateClient{}
 
-	challenge := make([]byte, 32)
-	rand.Reader.Read(challenge)
+	tokenChallenge := createTokenChallenge(BasicPrivateTokenType, nil, "issuer.example", []string{"origin.example"})
+	challenge := tokenChallenge.Marshal()
 
 	nonce := make([]byte, 32)
 	rand.Reader.Read(nonce)

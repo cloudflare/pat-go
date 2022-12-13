@@ -27,8 +27,8 @@ func TestBasicPublicIssuanceRoundTrip(t *testing.T) {
 
 	client := BasicPublicClient{}
 
-	challenge := make([]byte, 32)
-	rand.Reader.Read(challenge)
+	tokenChallenge := createTokenChallenge(BasicPublicTokenType, nil, "issuer.example", []string{"origin.example"})
+	challenge := tokenChallenge.Marshal()
 
 	nonce := make([]byte, 32)
 	rand.Reader.Read(nonce)
@@ -71,12 +71,12 @@ func TestBasicPublicIssuanceRoundTrip(t *testing.T) {
 	}
 }
 
-///////
+// /////
 // Basic issuance test vector
 type rawBasicIssuanceTestVector struct {
 	PrivateKey    string `json:"skS"`
 	PublicKey     string `json:"pkS"`
-	Challenge     string `json:"challenge"`
+	Challenge     string `json:"token_challenge"`
 	Nonce         string `json:"nonce"`
 	Blind         string `json:"blind"`
 	Salt          string `json:"salt"`
