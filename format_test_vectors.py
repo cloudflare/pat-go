@@ -3,7 +3,7 @@ import json
 import textwrap
 
 def wrap_line(value):
-    return textwrap.fill(value, width=72)
+    return textwrap.fill(value, width=65)
 
 def format_vector(vector_keys, vector_fname):
     with open(vector_fname, "r") as fh:
@@ -54,6 +54,6 @@ if "anon-origin-id-test-vectors.json" in sys.argv[1]:
 
 if "token-test-vectors" in sys.argv[1]:
     ordered_keys = [
-        "token_type", "issuer_name", "redemption_context", "origin_info", "nonce", "token_key", "token_authenticator_input", "token_authenticator"
+        "token_type", "issuer_name", "redemption_context", "origin_info", "nonce", "token_key_id", "token_authenticator_input"
     ]
     format_vector(ordered_keys, sys.argv[1])

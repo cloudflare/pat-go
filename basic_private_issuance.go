@@ -161,7 +161,7 @@ func (i *BasicPrivateIssuer) TokenKeyID() []byte {
 	if err != nil {
 		panic(err)
 	}
-	keyID := sha256.Sum256(append([]byte{0x00, 0x01}, pkIEnc...))
+	keyID := sha256.Sum256(pkIEnc)
 	return keyID[:]
 }
 

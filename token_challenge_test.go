@@ -2,11 +2,9 @@ package pat
 
 import (
 	"bytes"
-	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
-	"crypto/sha512"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -68,7 +66,7 @@ func TestBase64(t *testing.T) {
 	}
 }
 
-///////
+// /////
 // Index computation test vector structure
 type rawTokenTestVector struct {
 	TokenType               uint16 `json:"token_type"`
@@ -76,9 +74,8 @@ type rawTokenTestVector struct {
 	RedemptionContext       string `json:"redemption_context"`
 	OriginInfo              string `json:"origin_info"`
 	Nonce                   string `json:"nonce"`
-	TokenKey                string `json:"token_key"`
+	TokenKeyId              string `json:"token_key_id"`
 	TokenAuthenticatorInput string `json:"token_authenticator_input"`
-	TokenAuthenticator      string `json:"token_authenticator"`
 }
 
 type tokenTestVector struct {
@@ -88,10 +85,8 @@ type tokenTestVector struct {
 	redemptionContext       []byte
 	originInfo              []string
 	nonce                   []byte
-	tokenSigningKey         *rsa.PrivateKey
-	tokenKey                *rsa.PublicKey
+	tokenKeyId              []byte
 	tokenAuthenticatorInput []byte
-	tokenAuthenticator      []byte
 }
 
 type tokenTestVectorArray struct {
@@ -122,9 +117,8 @@ func (etv tokenTestVector) MarshalJSON() ([]byte, error) {
 		RedemptionContext:       mustHex(etv.redemptionContext),
 		OriginInfo:              mustHex([]byte(strings.Join(etv.originInfo, ","))),
 		Nonce:                   mustHex(etv.nonce),
-		TokenKey:                mustHex(mustMarshalPublicKey(&etv.tokenSigningKey.PublicKey)),
+		TokenKeyId:              mustHex(etv.tokenKeyId),
 		TokenAuthenticatorInput: mustHex(etv.tokenAuthenticatorInput),
-		TokenAuthenticator:      mustHex(etv.tokenAuthenticator),
 	})
 }
 
@@ -140,9 +134,8 @@ func (etv *tokenTestVector) UnmarshalJSON(data []byte) error {
 	etv.redemptionContext = mustUnhex(nil, raw.RedemptionContext)
 	etv.originInfo = strings.Split(string(mustUnhex(nil, raw.OriginInfo)), ",")
 	etv.nonce = mustUnhex(nil, raw.Nonce)
-	etv.tokenKey = mustUnmarshalPublicKey(mustUnhex(nil, raw.TokenKey))
+	etv.tokenKeyId = mustUnhex(nil, raw.TokenKeyId)
 	etv.tokenAuthenticatorInput = mustUnhex(nil, raw.TokenAuthenticatorInput)
-	etv.tokenAuthenticator = mustUnhex(nil, raw.TokenAuthenticator)
 
 	return nil
 }
@@ -163,31 +156,14 @@ func generateTokenTestVector(t *testing.T, tokenType uint16, redemptionContext [
 		Authenticator: nil, // No signature computed yet
 	}
 
-	hash := sha512.New384()
-	_, err := hash.Write(token.AuthenticatorInput())
-	if err != nil {
-		return tokenTestVector{}, err
-	}
-	digest := hash.Sum(nil)
-
-	sig, err := rsa.SignPSS(rand.Reader, tokenSigningKey, crypto.SHA384, digest, &rsa.PSSOptions{
-		Hash:       crypto.SHA384,
-		SaltLength: crypto.SHA384.Size(),
-	})
-	if err != nil {
-		return tokenTestVector{}, err
-	}
-
 	return tokenTestVector{
 		tokenType:               tokenType,
 		issuerName:              issuerName,
 		originInfo:              originInfo,
 		nonce:                   nonce,
 		redemptionContext:       redemptionContext,
-		tokenKey:                &tokenSigningKey.PublicKey,
-		tokenSigningKey:         tokenSigningKey,
+		tokenKeyId:              tokenKeyID[:],
 		tokenAuthenticatorInput: token.AuthenticatorInput(),
-		tokenAuthenticator:      sig,
 	}, nil
 }
 
@@ -196,37 +172,18 @@ func verifyTokenTestVector(t *testing.T, vector tokenTestVector) {
 		t.Fatal("Unsupported token type")
 	}
 
-	tokenKeyID := sha256.Sum256(mustMarshalPublicKey(vector.tokenKey))
 	challenge := createTokenChallenge(vector.tokenType, vector.redemptionContext, vector.issuerName, vector.originInfo)
 	context := sha256.Sum256(challenge.Marshal())
 	token := Token{
 		TokenType:     vector.tokenType,
 		Nonce:         vector.nonce,
 		Context:       context[:],
-		KeyID:         tokenKeyID[:],
+		KeyID:         vector.tokenKeyId,
 		Authenticator: nil, // No signature computed yet
 	}
 
 	if !bytes.Equal(token.AuthenticatorInput(), vector.tokenAuthenticatorInput) {
 		t.Fatalf("Token authenticator input mismatch, got %x, expected %x", token.AuthenticatorInput(), vector.tokenAuthenticatorInput)
-	}
-
-	token.Authenticator = make([]byte, len(vector.tokenAuthenticator))
-	copy(token.Authenticator, vector.tokenAuthenticator)
-
-	hash := sha512.New384()
-	_, err := hash.Write(token.AuthenticatorInput())
-	if err != nil {
-		t.Fatal(err)
-	}
-	digest := hash.Sum(nil)
-
-	err = rsa.VerifyPSS(vector.tokenKey, crypto.SHA384, digest, token.Authenticator, &rsa.PSSOptions{
-		Hash:       crypto.SHA384,
-		SaltLength: crypto.SHA384.Size(),
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -281,6 +238,13 @@ func TestVectorGenerateToken(t *testing.T) {
 			BasicPublicTokenType,
 			issuerName,
 			nil,
+			nil,
+			nonce,
+		},
+		{
+			BasicPublicTokenType,
+			issuerName,
+			redemptonContext,
 			nil,
 			nonce,
 		},
