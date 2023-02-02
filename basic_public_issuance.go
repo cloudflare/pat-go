@@ -62,7 +62,7 @@ func (s BasicPublicTokenRequestState) FinalizeToken(blindSignature []byte) (Toke
 
 // https://ietf-wg-privacypass.github.io/base-drafts/caw/pp-issuance/draft-ietf-privacypass-protocol.html#name-issuance-protocol-for-publi
 func (c BasicPublicClient) CreateTokenRequest(challenge, nonce []byte, tokenKeyID []byte, tokenKey *rsa.PublicKey) (BasicPublicTokenRequestState, error) {
-	verifier := blindrsa.NewRSAVerifier(tokenKey, sha512.New384())
+	verifier := blindrsa.NewRSAVerifier(tokenKey, crypto.SHA384)
 
 	context := sha256.Sum256(challenge)
 	token := Token{
@@ -94,7 +94,7 @@ func (c BasicPublicClient) CreateTokenRequest(challenge, nonce []byte, tokenKeyI
 }
 
 func (c BasicPublicClient) CreateTokenRequestWithBlind(challenge, nonce []byte, tokenKeyID []byte, tokenKey *rsa.PublicKey, blind, salt []byte) (BasicPublicTokenRequestState, error) {
-	verifier := blindrsa.NewRSAVerifier(tokenKey, sha512.New384())
+	verifier := blindrsa.NewRSAVerifier(tokenKey, crypto.SHA384)
 
 	context := sha256.Sum256(challenge)
 	token := Token{

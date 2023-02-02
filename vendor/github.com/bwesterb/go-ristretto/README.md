@@ -87,6 +87,9 @@ and [Mike Hamburg](https://www.shiftleft.org).
 Changes
 -------
 
+### 1.2.2 (29-07-2022)
+- Add Point.ConditionalSet() and Scalar.ConditionalSet().
+
 ### 1.2.1 (08-11-2021)
 - Add Scalar.SetUint64().
 

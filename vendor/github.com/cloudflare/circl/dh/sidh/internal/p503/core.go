@@ -4,6 +4,7 @@
 package p503
 
 import (
+	crand "crypto/rand"
 	. "github.com/cloudflare/circl/dh/sidh/internal/common"
 )
 
@@ -14,8 +15,8 @@ import (
 // Traverses isogeny tree in order to compute xR, xP, xQ and xQmP needed
 // for public key generation.
 func traverseTreePublicKeyA(curve *ProjectiveCurveParameters, xR, phiP, phiQ, phiR *ProjectivePoint) {
-	var points = make([]ProjectivePoint, 0, 8)
-	var indices = make([]int, 0, 8)
+	points := make([]ProjectivePoint, 0, 8)
+	indices := make([]int, 0, 8)
 	var i, sIdx int
 	var phi isogeny4
 
@@ -51,8 +52,8 @@ func traverseTreePublicKeyA(curve *ProjectiveCurveParameters, xR, phiP, phiQ, ph
 // Traverses isogeny tree in order to compute xR needed
 // for public key generation.
 func traverseTreeSharedKeyA(curve *ProjectiveCurveParameters, xR *ProjectivePoint) {
-	var points = make([]ProjectivePoint, 0, 8)
-	var indices = make([]int, 0, 8)
+	points := make([]ProjectivePoint, 0, 8)
+	indices := make([]int, 0, 8)
 	var i, sIdx int
 	var phi isogeny4
 
@@ -85,8 +86,8 @@ func traverseTreeSharedKeyA(curve *ProjectiveCurveParameters, xR *ProjectivePoin
 // Traverses isogeny tree in order to compute xR, xP, xQ and xQmP needed
 // for public key generation.
 func traverseTreePublicKeyB(curve *ProjectiveCurveParameters, xR, phiP, phiQ, phiR *ProjectivePoint) {
-	var points = make([]ProjectivePoint, 0, 8)
-	var indices = make([]int, 0, 8)
+	points := make([]ProjectivePoint, 0, 8)
+	indices := make([]int, 0, 8)
 	var i, sIdx int
 	var phi isogeny3
 
@@ -123,8 +124,8 @@ func traverseTreePublicKeyB(curve *ProjectiveCurveParameters, xR, phiP, phiQ, ph
 // Traverses isogeny tree in order to compute xR, xP, xQ and xQmP needed
 // for public key generation.
 func traverseTreeSharedKeyB(curve *ProjectiveCurveParameters, xR *ProjectivePoint) {
-	var points = make([]ProjectivePoint, 0, 8)
-	var indices = make([]int, 0, 8)
+	points := make([]ProjectivePoint, 0, 8)
+	indices := make([]int, 0, 8)
 	var i, sIdx int
 	var phi isogeny3
 
@@ -274,6 +275,16 @@ func DeriveSecretB(ss, prv []byte, pub3Pt *[3]Fp2) {
 	xP = ProjectivePoint{X: pub3Pt[0], Z: params.OneFp2}
 	xQ = ProjectivePoint{X: pub3Pt[1], Z: params.OneFp2}
 	xQmP = ProjectivePoint{X: pub3Pt[2], Z: params.OneFp2}
+
+	//PUBLIC KEY VALIDATION
+	if err := PublicKeyValidation(&cparam, &xP, &xQ, &xQmP, params.B.SecretBitLen); err != nil {
+		_, err_read := crand.Read(ss)
+		if err_read != nil {
+			panic("core: failed to generate random ss when public key verification fails")
+		}
+		return
+	}
+
 	xR = ScalarMul3Pt(&cparam, &xP, &xQ, &xQmP, params.B.SecretBitLen, prv)
 
 	// Traverse isogeny tree
@@ -285,4 +296,5 @@ func DeriveSecretB(ss, prv []byte, pub3Pt *[3]Fp2) {
 	Jinvariant(&cparam, &jInv)
 	FromMontgomery(&jInv, &jInv)
 	Fp2ToBytes(ss, &jInv, params.Bytelen)
+
 }

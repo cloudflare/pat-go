@@ -1422,3 +1422,16 @@ func (s *Scalar) reduceAfterMul(s0, s1, s2, s3, s4, s5, s6, s7,
 	s[7] = uint32(s10>>14) | uint32(s11<<7)
 	return s
 }
+
+// Set s to t if b=1 in constant-time. b must be either 0 or 1.
+func (s *Scalar) ConditionalSet(t *Scalar, b int32) {
+	m := uint32(-b)
+	s[0] ^= m & (s[0] ^ t[0])
+	s[1] ^= m & (s[1] ^ t[1])
+	s[2] ^= m & (s[2] ^ t[2])
+	s[3] ^= m & (s[3] ^ t[3])
+	s[4] ^= m & (s[4] ^ t[4])
+	s[5] ^= m & (s[5] ^ t[5])
+	s[6] ^= m & (s[6] ^ t[6])
+	s[7] ^= m & (s[7] ^ t[7])
+}

@@ -242,7 +242,7 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 	}
 	blindedPublicKeyEnc := elliptic.MarshalCompressed(c.curve, blindedPublicKey.X, blindedPublicKey.Y)
 
-	verifier := blindrsa.NewRSAVerifier(tokenKey, sha512.New384())
+	verifier := blindrsa.NewRSAVerifier(tokenKey, crypto.SHA384)
 
 	context := sha256.Sum256(challenge)
 	token := Token{
