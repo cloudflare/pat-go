@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	"github.com/cloudflare/circl/group"
-	"github.com/cloudflare/circl/group/dleq"
 	"github.com/cloudflare/circl/oprf"
+	"github.com/cloudflare/circl/zk/dleq"
 )
 
 type BasicPrivateClient struct {

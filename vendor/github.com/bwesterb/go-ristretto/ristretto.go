@@ -308,6 +308,11 @@ func (p *Point) Equals(q *Point) bool {
 	return p.EqualsI(q) == 1
 }
 
+// Set p to q if b=1 in constant-time. b must be either 0 or 1.
+func (p *Point) ConditionalSet(q *Point, b int32) {
+	p.e().ConditionalSet(q.e(), b)
+}
+
 // Sets p to the point derived from the buffer using SHA512 and Elligator2
 // in the fashion of curve25519-dalek.
 //

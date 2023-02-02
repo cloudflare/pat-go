@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 
 	"github.com/cloudflare/circl/group"
-	"github.com/cloudflare/circl/group/dleq"
+	"github.com/cloudflare/circl/zk/dleq"
 )
 
 type client struct{ params }
@@ -64,8 +64,7 @@ func (c client) blind(inputs [][]byte, blinds []Blind) (*FinalizeData, *Evaluati
 	return finData, evalReq, nil
 }
 
-func (c client) unblind(serUnblindeds [][]byte, blindeds []group.Element, blind []Blind) error {
-	var err error
+func (c client) unblind(serUnblindeds [][]byte, blindeds []group.Element, blind []Blind) (err error) {
 	invBlind := c.params.group.NewScalar()
 	U := c.params.group.NewElement()
 
