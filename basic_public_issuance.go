@@ -79,7 +79,7 @@ func (c BasicPublicClient) CreateTokenRequest(challenge, nonce []byte, tokenKeyI
 	}
 
 	request := &BasicPublicTokenRequest{
-		TokenKeyID: tokenKeyID[0],
+		TokenKeyID: tokenKeyID[len(tokenKeyID)-1],
 		BlindedReq: blindedMessage,
 	}
 
@@ -111,7 +111,7 @@ func (c BasicPublicClient) CreateTokenRequestWithBlind(challenge, nonce []byte, 
 	}
 
 	request := &BasicPublicTokenRequest{
-		TokenKeyID: tokenKeyID[0],
+		TokenKeyID: tokenKeyID[len(tokenKeyID)-1],
 		BlindedReq: blindedMessage,
 	}
 

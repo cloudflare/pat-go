@@ -83,7 +83,7 @@ func (c BasicPrivateClient) CreateTokenRequest(challenge, nonce []byte, tokenKey
 		return BasicPrivateTokenRequestState{}, err
 	}
 	request := &BasicPrivateTokenRequest{
-		TokenKeyID: tokenKeyID[0],
+		TokenKeyID: tokenKeyID[len(tokenKeyID)-1],
 		BlindedReq: encRequest,
 	}
 
@@ -127,7 +127,7 @@ func (c BasicPrivateClient) CreateTokenRequestWithBlind(challenge, nonce []byte,
 		return BasicPrivateTokenRequestState{}, err
 	}
 	request := &BasicPrivateTokenRequest{
-		TokenKeyID: tokenKeyID[0],
+		TokenKeyID: tokenKeyID[len(tokenKeyID)-1],
 		BlindedReq: encRequest,
 	}
 
