@@ -194,8 +194,8 @@ func generateBasicIssuanceTestVector(t *testing.T) basicIssuanceTestVector {
 	issuer := NewBasicPublicIssuer(tokenKey)
 	client := BasicPublicClient{}
 
-	challenge := make([]byte, 32)
-	rand.Reader.Read(challenge)
+	tokenChallenge := createTokenChallenge(BasicPublicTokenType, nil, "issuer.example", []string{"origin.example"})
+	challenge := tokenChallenge.Marshal()
 
 	nonce := make([]byte, 32)
 	rand.Reader.Read(nonce)
