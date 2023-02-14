@@ -9,7 +9,8 @@ def format_vector(vector_keys, vector_fname):
     with open(vector_fname, "r") as fh:
         data = json.load(fh)
         formatted = "~~~\n"
-        for entry in data:
+        for i, entry in enumerate(data):
+            formatted = formatted + ("// Test vector %d" % (i+1)) + "\n"
             for key in vector_keys:
                 if key in entry:
                     formatted = formatted + wrap_line(key + ": " + str(entry[key])) + "\n"
