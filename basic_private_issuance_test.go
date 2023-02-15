@@ -3,12 +3,14 @@ package pat
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
 	"io/ioutil"
 	"os"
 	"testing"
 
 	"github.com/cloudflare/circl/oprf"
+	"golang.org/x/crypto/hkdf"
 )
 
 const (
@@ -165,16 +167,7 @@ func (etv *BasicPrivateIssuanceTestVector) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func generateBasicPrivateIssuanceBlindingTestVector(t *testing.T) BasicPrivateIssuanceTestVector {
-	tokenKey, err := oprf.GenerateKey(oprf.SuiteP384, rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	issuer := NewBasicPrivateIssuer(tokenKey)
-	client := BasicPrivateClient{}
-
-	tokenChallenge := createTokenChallenge(BasicPrivateTokenType, nil, "issuer.example", []string{"origin.example"})
+func generateBasicPrivateIssuanceBlindingTestVector(t *testing.T, client *BasicPrivateClient, issuer *BasicPrivateIssuer, tokenChallenge TokenChallenge) BasicPrivateIssuanceTestVector {
 	challenge := tokenChallenge.Marshal()
 
 	nonce := make([]byte, 32)
@@ -206,7 +199,7 @@ func generateBasicPrivateIssuanceBlindingTestVector(t *testing.T) BasicPrivateIs
 
 	return BasicPrivateIssuanceTestVector{
 		t:             t,
-		skS:           tokenKey,
+		skS:           issuer.tokenKey,
 		challenge:     challenge,
 		nonce:         nonce,
 		blind:         blindEnc,
@@ -256,8 +249,36 @@ func verifyBasicPrivateIssuanceTestVectors(t *testing.T, encoded []byte) {
 }
 
 func TestVectorGenerateBasicPrivateIssuance(t *testing.T) {
-	vectors := make([]BasicPrivateIssuanceTestVector, 0)
-	vectors = append(vectors, generateBasicPrivateIssuanceBlindingTestVector(t))
+	hash := sha256.New
+	secret := []byte("test vector secret")
+	hkdf := hkdf.New(hash, secret, nil, []byte{0x00, byte(BasicPrivateTokenType & 0xFF)})
+
+	redemptionContext := make([]byte, 32)
+	hkdf.Read(redemptionContext)
+
+	challenges := []TokenChallenge{
+		createTokenChallenge(BasicPrivateTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
+		createTokenChallenge(BasicPrivateTokenType, nil, "issuer.example", []string{"origin.example"}),
+		createTokenChallenge(BasicPrivateTokenType, nil, "issuer.example", []string{"foo.example,bar.example"}),
+		createTokenChallenge(BasicPrivateTokenType, nil, "issuer.example", []string{}),
+		createTokenChallenge(BasicPrivateTokenType, redemptionContext, "issuer.example", []string{}),
+	}
+
+	vectors := make([]BasicPrivateIssuanceTestVector, len(challenges))
+	for i := 0; i < len(challenges); i++ {
+		challenge := challenges[i]
+		challengeEnc := challenge.Marshal()
+
+		tokenKey, err := oprf.DeriveKey(oprf.SuiteP384, oprf.VerifiableMode, []byte("fixed seed"), challengeEnc)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		issuer := NewBasicPrivateIssuer(tokenKey)
+		client := &BasicPrivateClient{}
+
+		vectors[i] = generateBasicPrivateIssuanceBlindingTestVector(t, client, issuer, challenge)
+	}
 
 	// Encode the test vectors
 	encoded, err := json.Marshal(vectors)

@@ -73,6 +73,7 @@ func (c BasicPublicClient) CreateTokenRequest(challenge, nonce []byte, tokenKeyI
 		Authenticator: nil, // No signature computed yet
 	}
 	tokenInput := token.AuthenticatorInput()
+
 	blindedMessage, verifierState, err := verifier.Blind(rand.Reader, tokenInput)
 	if err != nil {
 		return BasicPublicTokenRequestState{}, err
