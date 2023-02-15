@@ -22,7 +22,7 @@ This will produce several JSON files:
 
 Examples for generating and verifying the test vectors can be found [in the Makefile](https://github.com/cloudflare/pat-go/blob/main/Makefile).
 
-## PerformanceBenchmarks
+## Performance Benchmarks
 
 To compute performance benchmarks, run:
 
