@@ -24,7 +24,7 @@ const (
 	inputEd25519BlindingTestVectorEnvironmentKey  = "ED25519_BLINDING_TEST_VECTORS_IN"
 )
 
-///////
+// /////
 // ECDSA key blinding test vector
 type rawECDSABlindingTestVector struct {
 	Curve          string `json:"Curve"`
@@ -272,7 +272,7 @@ func TestVectorVerifyECDSABlinding(t *testing.T) {
 	verifyECDSABlindingTestVectors(t, encoded)
 }
 
-///////
+// /////
 // Ed25519 key blinding test vector
 type rawEd25519BlindingTestVector struct {
 	PrivateKey     string `json:"skS"`
@@ -452,4 +452,186 @@ func TestVectorVerifyEd25519Blinding(t *testing.T) {
 	}
 
 	verifyEd25519BlindingTestVectors(t, encoded)
+}
+
+func BenchmarkEd25519(b *testing.B) {
+	b.Run("KeyGen", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			skB := make([]byte, 32)
+			rand.Reader.Read(skB)
+		}
+	})
+
+	b.Run("BlindPublicKey", func(b *testing.B) {
+		skS := make([]byte, 32)
+		rand.Reader.Read(skS)
+		skB := make([]byte, 32)
+		rand.Reader.Read(skB)
+		context := make([]byte, 32)
+		rand.Reader.Read(context)
+		privateKey := ed25519.NewKeyFromSeed(skS)
+
+		for n := 0; n < b.N; n++ {
+			publicKey := privateKey.Public().(ed25519.PublicKey)
+			_, err := ed25519.BlindPublicKeyWithContext(publicKey, skB, context)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("UnblindPublicKey", func(b *testing.B) {
+		skS := make([]byte, 32)
+		rand.Reader.Read(skS)
+		skB := make([]byte, 32)
+		rand.Reader.Read(skB)
+		context := make([]byte, 32)
+		rand.Reader.Read(context)
+		privateKey := ed25519.NewKeyFromSeed(skS)
+
+		publicKey := privateKey.Public().(ed25519.PublicKey)
+		publicBlind, err := ed25519.BlindPublicKeyWithContext(publicKey, skB, context)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		for n := 0; n < b.N; n++ {
+			unblindedKey, err := ed25519.UnblindPublicKeyWithContext(publicBlind, skB, context)
+			if err != nil {
+				b.Fatal(err)
+			}
+			if !unblindedKey.Equal(publicKey) {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("BlindKeySign", func(b *testing.B) {
+		skS := make([]byte, 32)
+		rand.Reader.Read(skS)
+		skB := make([]byte, 32)
+		rand.Reader.Read(skB)
+		context := make([]byte, 32)
+		rand.Reader.Read(context)
+		privateKey := ed25519.NewKeyFromSeed(skS)
+		message := make([]byte, 32)
+		rand.Reader.Read(message)
+		for n := 0; n < b.N; n++ {
+			_ = ed25519.BlindKeySignWithContext(privateKey, message, skB, context)
+		}
+	})
+
+	b.Run("Sign", func(b *testing.B) {
+		skS := make([]byte, 32)
+		rand.Reader.Read(skS)
+		privateKey := ed25519.NewKeyFromSeed(skS)
+		message := make([]byte, 32)
+		rand.Reader.Read(message)
+		for n := 0; n < b.N; n++ {
+			_ = ed25519.Sign(privateKey, message)
+		}
+	})
+}
+
+func BenchmarkECDSA(b *testing.B) {
+	c := elliptic.P384()
+
+	b.Run("KeyGen", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			_, err := ecdsa.GenerateKey(c, rand.Reader)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("BlindPublicKey", func(b *testing.B) {
+		skS, err := ecdsa.GenerateKey(c, rand.Reader)
+		if err != nil {
+			b.Fatal(err)
+		}
+		skB, err := ecdsa.GenerateKey(c, rand.Reader)
+		if err != nil {
+			b.Fatal(err)
+		}
+		context := make([]byte, 32)
+		rand.Reader.Read(context)
+
+		for n := 0; n < b.N; n++ {
+			_, err := ecdsa.BlindPublicKeyWithContext(c, &skS.PublicKey, skB, context)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("UnblindPublicKey", func(b *testing.B) {
+		skS, err := ecdsa.GenerateKey(c, rand.Reader)
+		if err != nil {
+			b.Fatal(err)
+		}
+		skB, err := ecdsa.GenerateKey(c, rand.Reader)
+		if err != nil {
+			b.Fatal(err)
+		}
+		context := make([]byte, 32)
+		rand.Reader.Read(context)
+
+		pkR, err := ecdsa.BlindPublicKeyWithContext(c, &skS.PublicKey, skB, context)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		for n := 0; n < b.N; n++ {
+			unblindedKey, err := ecdsa.UnblindPublicKeyWithContext(c, pkR, skB, context)
+			if err != nil {
+				b.Fatal(err)
+			}
+			if !unblindedKey.Equal(&skS.PublicKey) {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("BlindKeySign", func(b *testing.B) {
+		skS, err := ecdsa.GenerateKey(c, rand.Reader)
+		if err != nil {
+			b.Fatal(err)
+		}
+		skB, err := ecdsa.GenerateKey(c, rand.Reader)
+		if err != nil {
+			b.Fatal(err)
+		}
+		context := make([]byte, 32)
+		rand.Reader.Read(context)
+		message := make([]byte, 32)
+		rand.Reader.Read(message)
+		for n := 0; n < b.N; n++ {
+			digester := crypto.SHA384.New()
+			digester.Write(message)
+			digest := digester.Sum(nil)
+			_, _, err := ecdsa.BlindKeySignWithContext(rand.Reader, skS, skB, digest, context)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("Sign", func(b *testing.B) {
+		skS, err := ecdsa.GenerateKey(c, rand.Reader)
+		if err != nil {
+			b.Fatal(err)
+		}
+		message := make([]byte, 32)
+		rand.Reader.Read(message)
+		for n := 0; n < b.N; n++ {
+			digester := crypto.SHA384.New()
+			digester.Write(message)
+			digest := digester.Sum(nil)
+			_, _, err := ecdsa.Sign(rand.Reader, skS, digest)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
 }
