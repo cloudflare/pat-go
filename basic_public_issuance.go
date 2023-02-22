@@ -73,13 +73,14 @@ func (c BasicPublicClient) CreateTokenRequest(challenge, nonce []byte, tokenKeyI
 		Authenticator: nil, // No signature computed yet
 	}
 	tokenInput := token.AuthenticatorInput()
+
 	blindedMessage, verifierState, err := verifier.Blind(rand.Reader, tokenInput)
 	if err != nil {
 		return BasicPublicTokenRequestState{}, err
 	}
 
 	request := &BasicPublicTokenRequest{
-		TokenKeyID: tokenKeyID[0],
+		TokenKeyID: tokenKeyID[len(tokenKeyID)-1],
 		BlindedReq: blindedMessage,
 	}
 
@@ -111,7 +112,7 @@ func (c BasicPublicClient) CreateTokenRequestWithBlind(challenge, nonce []byte, 
 	}
 
 	request := &BasicPublicTokenRequest{
-		TokenKeyID: tokenKeyID[0],
+		TokenKeyID: tokenKeyID[len(tokenKeyID)-1],
 		BlindedReq: blindedMessage,
 	}
 

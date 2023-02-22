@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"golang.org/x/crypto/cryptobyte"
+	"golang.org/x/crypto/hkdf"
 )
 
 const (
@@ -188,14 +189,8 @@ func (etv *basicIssuanceTestVector) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func generateBasicIssuanceTestVector(t *testing.T) basicIssuanceTestVector {
-	tokenKey := loadPrivateKey(t)
-
-	issuer := NewBasicPublicIssuer(tokenKey)
-	client := BasicPublicClient{}
-
-	challenge := make([]byte, 32)
-	rand.Reader.Read(challenge)
+func generateBasicIssuanceTestVector(t *testing.T, client *BasicPublicClient, issuer *BasicPublicIssuer, tokenChallenge TokenChallenge) basicIssuanceTestVector {
+	challenge := tokenChallenge.Marshal()
 
 	nonce := make([]byte, 32)
 	rand.Reader.Read(nonce)
@@ -220,7 +215,7 @@ func generateBasicIssuanceTestVector(t *testing.T) basicIssuanceTestVector {
 
 	return basicIssuanceTestVector{
 		t:             t,
-		skS:           tokenKey,
+		skS:           issuer.tokenKey,
 		challenge:     challenge,
 		nonce:         nonce,
 		blind:         requestState.verifier.CopyBlind(),
@@ -271,8 +266,31 @@ func verifyBasicIssuanceTestVectors(t *testing.T, encoded []byte) {
 }
 
 func TestVectorGenerateBasicIssuance(t *testing.T) {
-	vectors := make([]basicIssuanceTestVector, 0)
-	vectors = append(vectors, generateBasicIssuanceTestVector(t))
+	hash := sha256.New
+	secret := []byte("test vector secret")
+	hkdf := hkdf.New(hash, secret, nil, []byte{0x00, byte(BasicPublicTokenType & 0xFF)})
+
+	redemptionContext := make([]byte, 32)
+	hkdf.Read(redemptionContext)
+
+	challenges := []TokenChallenge{
+		createTokenChallenge(BasicPublicTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
+		createTokenChallenge(BasicPublicTokenType, nil, "issuer.example", []string{"origin.example"}),
+		createTokenChallenge(BasicPublicTokenType, nil, "issuer.example", []string{"foo.example,bar.example"}),
+		createTokenChallenge(BasicPublicTokenType, nil, "issuer.example", []string{}),
+		createTokenChallenge(BasicPublicTokenType, redemptionContext, "issuer.example", []string{}),
+	}
+
+	vectors := make([]basicIssuanceTestVector, len(challenges))
+	for i := 0; i < len(challenges); i++ {
+		challenge := challenges[i]
+
+		tokenKey := loadPrivateKey(t)
+		issuer := NewBasicPublicIssuer(tokenKey)
+		client := &BasicPublicClient{}
+
+		vectors[i] = generateBasicIssuanceTestVector(t, client, issuer, challenge)
+	}
 
 	// Encode the test vectors
 	encoded, err := json.Marshal(vectors)
