@@ -14,10 +14,11 @@
 // under standard cryptographic assumptions (see [Larsson] for examples).
 //
 // References:
-//   [Coron]
-//     https://cs.nyu.edu/~dodis/ps/merkle.pdf
-//   [Larsson]
-//     https://web.archive.org/web/20040719170906/https://www.nada.kth.se/kurser/kth/2D1441/semteo03/lecturenotes/assump.pdf
+//
+//	[Coron]
+//	  https://cs.nyu.edu/~dodis/ps/merkle.pdf
+//	[Larsson]
+//	  https://web.archive.org/web/20040719170906/https://www.nada.kth.se/kurser/kth/2D1441/semteo03/lecturenotes/assump.pdf
 package ecdsa
 
 // Further references:

@@ -32,8 +32,12 @@ costs = {}
 for line in sys.stdin:
     if line.startswith("Benchmark"):
         line = line.strip().split("\t")
-        name, cost = mapName(line[0].strip()), line[2].strip().replace("ns/op", "")
-        costs[name] = cost
+        try:
+            name, cost = mapName(line[0].strip()), line[2].strip().replace("ns/op", "")
+            costs[name] = cost
+        except:
+            # Ignore other benchmarks
+            pass
 
 print("\\begin{table}[ht!]")
 print("\\label{tab:bench-computation-overhead}")

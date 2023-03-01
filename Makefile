@@ -9,3 +9,6 @@ vectors: test
 	BASIC_PRIVATE_ISSUANCE_TEST_VECTORS_OUT=basic-private-issuance-test-vectors.json go test -v -run TestVectorGenerateBasicPrivateIssuance
 	BASIC_PUBLIC_ISSUANCE_TEST_VECTORS_OUT=basic-public-issuance-test-vectors.json go test -v -run TestVectorGenerateBasicIssuance
 	TOKEN_TEST_VECTORS_OUT=token-test-vectors.json go test -v -run TestVectorGenerateToken
+
+bench:
+	go test -bench=.
