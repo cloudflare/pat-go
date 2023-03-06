@@ -13,7 +13,10 @@ def format_vector(vector_keys, vector_fname):
             formatted = formatted + ("// Test vector %d" % (i+1)) + "\n"
             for key in vector_keys:
                 if key in entry:
-                    formatted = formatted + wrap_line(key + ": " + str(entry[key])) + "\n"
+                    if type(entry[key]) == type(""):
+                        formatted = formatted + wrap_line(key + ": " + str(entry[key])) + "\n"
+                    else:
+                        formatted = formatted + wrap_line(key + ": " + str(",".join(entry[key]))) + "\n"
             formatted = formatted + "\n"
         print(formatted + "~~~\n")
 
@@ -32,6 +35,12 @@ if "ecdsa-blinding" in sys.argv[1]:
 if "basic-public-issuance" in sys.argv[1]:
     ordered_keys = [
         "skS", "pkS", "token_challenge", "nonce", "blind", "salt", "token_request", "token_response", "token"
+    ]
+    format_vector(ordered_keys, sys.argv[1])
+
+if "batched-private-issuance" in sys.argv[1]:
+    ordered_keys = [
+        "skS", "pkS", "token_challenge", "nonces", "blinds", "salt", "token_request", "token_response", "tokens"
     ]
     format_vector(ordered_keys, sys.argv[1])
 
