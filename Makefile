@@ -7,6 +7,7 @@ vectors: test
 	RATE_LIMITED_ANON_ORIGIN_ID_TEST_VECTORS_OUT=anon-origin-id-test-vectors.json go test -v -run TestVectorGenerateAnonOriginID
 	RATE_LIMITED_ORIGIN_ENCRYPTION_TEST_VECTORS_OUT=origin-encryption-test-vectors.json go test -v -run TestVectorGenerateOriginEncryption
 	BASIC_PRIVATE_ISSUANCE_TEST_VECTORS_OUT=basic-private-issuance-test-vectors.json go test -v -run TestVectorGenerateBasicPrivateIssuance
+	BATCHED_PRIVATE_ISSUANCE_TEST_VECTORS_OUT=batched-private-issuance-test-vectors.json go test -v -run TestVectorGenerateBatchedPrivateIssuance
 	BASIC_PUBLIC_ISSUANCE_TEST_VECTORS_OUT=basic-public-issuance-test-vectors.json go test -v -run TestVectorGenerateBasicIssuance
 	TOKEN_TEST_VECTORS_OUT=token-test-vectors.json go test -v -run TestVectorGenerateToken
 
