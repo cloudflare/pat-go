@@ -1,4 +1,4 @@
-package pat
+package type2
 
 import (
 	"crypto"
@@ -9,6 +9,8 @@ import (
 
 	"github.com/cloudflare/circl/blindsign"
 	"github.com/cloudflare/circl/blindsign/blindrsa"
+	"github.com/cloudflare/pat-go/tokens"
+	"github.com/cloudflare/pat-go/util"
 )
 
 type BasicPublicClient struct {
@@ -29,23 +31,23 @@ func (s BasicPublicTokenRequestState) Request() *BasicPublicTokenRequest {
 	return s.request
 }
 
-func (s BasicPublicTokenRequestState) FinalizeToken(blindSignature []byte) (Token, error) {
+func (s BasicPublicTokenRequestState) FinalizeToken(blindSignature []byte) (tokens.Token, error) {
 	signature, err := s.verifier.Finalize(blindSignature)
 	if err != nil {
-		return Token{}, err
+		return tokens.Token{}, err
 	}
 
 	tokenData := append(s.tokenInput, signature...)
 	token, err := UnmarshalToken(tokenData)
 	if err != nil {
-		return Token{}, err
+		return tokens.Token{}, err
 	}
 
 	// Sanity check: verify the token signature
 	hash := sha512.New384()
 	_, err = hash.Write(token.AuthenticatorInput())
 	if err != nil {
-		return Token{}, err
+		return tokens.Token{}, err
 	}
 	digest := hash.Sum(nil)
 
@@ -54,7 +56,7 @@ func (s BasicPublicTokenRequestState) FinalizeToken(blindSignature []byte) (Toke
 		SaltLength: crypto.SHA384.Size(),
 	})
 	if err != nil {
-		return Token{}, err
+		return tokens.Token{}, err
 	}
 
 	return token, nil
@@ -65,7 +67,7 @@ func (c BasicPublicClient) CreateTokenRequest(challenge, nonce []byte, tokenKeyI
 	verifier := blindrsa.NewRSAVerifier(tokenKey, crypto.SHA384)
 
 	context := sha256.Sum256(challenge)
-	token := Token{
+	token := tokens.Token{
 		TokenType:     BasicPublicTokenType,
 		Nonce:         nonce,
 		Context:       context[:],
@@ -98,7 +100,7 @@ func (c BasicPublicClient) CreateTokenRequestWithBlind(challenge, nonce []byte, 
 	verifier := blindrsa.NewRSAVerifier(tokenKey, crypto.SHA384)
 
 	context := sha256.Sum256(challenge)
-	token := Token{
+	token := tokens.Token{
 		TokenType:     BasicPublicTokenType,
 		Nonce:         nonce,
 		Context:       context[:],
@@ -141,7 +143,7 @@ func (i *BasicPublicIssuer) TokenKey() *rsa.PublicKey {
 }
 
 func (i *BasicPublicIssuer) TokenKeyID() []byte {
-	publicKeyEnc, err := MarshalTokenKeyPSSOID(&i.tokenKey.PublicKey)
+	publicKeyEnc, err := util.MarshalTokenKeyPSSOID(&i.tokenKey.PublicKey)
 	if err != nil {
 		panic(err)
 	}

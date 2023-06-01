@@ -1,4 +1,4 @@
-package pat
+package type3
 
 import (
 	"bytes"
@@ -20,6 +20,8 @@ import (
 	"golang.org/x/crypto/hkdf"
 
 	"github.com/cloudflare/pat-go/ecdsa"
+	"github.com/cloudflare/pat-go/tokens"
+	"github.com/cloudflare/pat-go/util"
 )
 
 var (
@@ -166,7 +168,7 @@ func (s RateLimitedTokenRequestState) ClientKey() []byte {
 }
 
 // https://ietf-wg-privacypass.github.io/draft-ietf-privacypass-rate-limit-tokens/draft-ietf-privacypass-rate-limit-tokens.html#name-attester-to-client-response
-func (s RateLimitedTokenRequestState) FinalizeToken(encryptedtokenResponse []byte) (Token, error) {
+func (s RateLimitedTokenRequestState) FinalizeToken(encryptedtokenResponse []byte) (tokens.Token, error) {
 	// response_nonce = random(max(Nn, Nk)), taken from the encapsualted response
 	responseNonceLen := max(s.nameKey.suite.AEAD.KeySize(), s.nameKey.suite.AEAD.NonceSize())
 
@@ -184,31 +186,31 @@ func (s RateLimitedTokenRequestState) FinalizeToken(encryptedtokenResponse []byt
 
 	cipher, err := s.nameKey.suite.AEAD.New(key)
 	if err != nil {
-		return Token{}, err
+		return tokens.Token{}, err
 	}
 
 	// reponse, error = Open(aead_key, aead_nonce, "", ct)
 	blindSignature, err := cipher.Open(nil, nonce, encryptedtokenResponse[responseNonceLen:], nil)
 	if err != nil {
-		return Token{}, err
+		return tokens.Token{}, err
 	}
 
 	signature, err := s.verifier.Finalize(blindSignature)
 	if err != nil {
-		return Token{}, err
+		return tokens.Token{}, err
 	}
 
 	tokenData := append(s.tokenInput, signature...)
 	token, err := UnmarshalToken(tokenData)
 	if err != nil {
-		return Token{}, err
+		return tokens.Token{}, err
 	}
 
 	// Sanity check: verify the token signature
 	hash := sha512.New384()
 	_, err = hash.Write(token.AuthenticatorInput())
 	if err != nil {
-		return Token{}, err
+		return tokens.Token{}, err
 	}
 	digest := hash.Sum(nil)
 
@@ -217,7 +219,7 @@ func (s RateLimitedTokenRequestState) FinalizeToken(encryptedtokenResponse []byt
 		SaltLength: crypto.SHA384.Size(),
 	})
 	if err != nil {
-		return Token{}, err
+		return tokens.Token{}, err
 	}
 
 	return token, nil
@@ -245,7 +247,7 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 	verifier := blindrsa.NewRSAVerifier(tokenKey, crypto.SHA384)
 
 	context := sha256.Sum256(challenge)
-	token := Token{
+	token := tokens.Token{
 		TokenType:     RateLimitedTokenType,
 		Nonce:         nonce,
 		Context:       context[:],
@@ -377,7 +379,7 @@ func (i *RateLimitedIssuer) TokenKey() *rsa.PublicKey {
 
 func (i *RateLimitedIssuer) TokenKeyID() []byte {
 	publicKey := i.TokenKey()
-	publicKeyEnc, err := MarshalTokenKeyPSSOID(publicKey)
+	publicKeyEnc, err := util.MarshalTokenKeyPSSOID(publicKey)
 	if err != nil {
 		panic(err)
 	}

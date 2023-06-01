@@ -1,4 +1,4 @@
-package pat
+package typeF91A
 
 import (
 	"bytes"
@@ -8,6 +8,7 @@ import (
 	"github.com/cloudflare/circl/group"
 	"github.com/cloudflare/circl/oprf"
 	"github.com/cloudflare/circl/zk/dleq"
+	"github.com/cloudflare/pat-go/tokens"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -30,20 +31,20 @@ func (s BatchedPrivateTokenRequestState) Request() *BatchedPrivateTokenRequest {
 	return s.request
 }
 
-func (s BatchedPrivateTokenRequestState) FinalizeTokens(tokenResponseEnc []byte) ([]Token, error) {
+func (s BatchedPrivateTokenRequestState) FinalizeTokens(tokenResponseEnc []byte) ([]tokens.Token, error) {
 	var encodedElements cryptobyte.String
 	reader := cryptobyte.String(tokenResponseEnc)
 	if !reader.ReadUint16LengthPrefixed(&encodedElements) || encodedElements.Empty() {
-		return nil, fmt.Errorf("Invalid batch token response list encoding")
+		return nil, fmt.Errorf("invalid batch token response list encoding")
 	}
 
 	elementLength := int(group.Ristretto255.Params().CompressedElementLength)
 	if len(encodedElements)%elementLength != 0 {
-		return nil, fmt.Errorf("Invalid batch token response encoding")
+		return nil, fmt.Errorf("invalid batch token response encoding")
 	}
 	numElements := len(encodedElements) / elementLength
 	if numElements != len(s.tokenInputs) {
-		return nil, fmt.Errorf("Invalid batch token response")
+		return nil, fmt.Errorf("invalid batch token response")
 	}
 	elements := make([]group.Element, numElements)
 	for i := 0; i < numElements; i++ {
@@ -58,7 +59,7 @@ func (s BatchedPrivateTokenRequestState) FinalizeTokens(tokenResponseEnc []byte)
 	proofLength := int(2 * group.Ristretto255.Params().ScalarLength)
 	proofEnc := make([]byte, proofLength)
 	if !reader.ReadBytes(&proofEnc, proofLength) {
-		return nil, fmt.Errorf("Invalid batch token response proof encoding")
+		return nil, fmt.Errorf("invalid batch token response proof encoding")
 	}
 
 	proof := new(dleq.Proof)
@@ -76,7 +77,7 @@ func (s BatchedPrivateTokenRequestState) FinalizeTokens(tokenResponseEnc []byte)
 		return nil, err
 	}
 
-	tokens := make([]Token, numElements)
+	tokens := make([]tokens.Token, numElements)
 	for i := 0; i < numElements; i++ {
 		tokenData := append(s.tokenInputs[i], outputs[i]...)
 		tokens[i], err = UnmarshalBatchedPrivateToken(tokenData)
@@ -96,7 +97,7 @@ func (c BatchedPrivateClient) CreateTokenRequest(challenge []byte, nonce [][]byt
 	tokenInputs := make([][]byte, numTokens)
 	for i := 0; i < numTokens; i++ {
 		context := sha256.Sum256(challenge)
-		token := Token{
+		token := tokens.Token{
 			TokenType:     BatchedPrivateTokenType,
 			Nonce:         nonce[i],
 			Context:       context[:],
@@ -147,7 +148,7 @@ func (c BatchedPrivateClient) CreateTokenRequestWithBlinds(challenge []byte, non
 	blinds := make([]group.Scalar, numTokens)
 	for i := 0; i < numTokens; i++ {
 		context := sha256.Sum256(challenge)
-		token := Token{
+		token := tokens.Token{
 			TokenType:     BatchedPrivateTokenType,
 			Nonce:         nonces[i],
 			Context:       context[:],
@@ -272,7 +273,7 @@ func (i BatchedPrivateIssuer) Evaluate(req *BatchedPrivateTokenRequest) ([]byte,
 	return b.BytesOrPanic(), nil
 }
 
-func (i BatchedPrivateIssuer) Verify(token Token) error {
+func (i BatchedPrivateIssuer) Verify(token tokens.Token) error {
 	server := oprf.NewVerifiableServer(oprf.SuiteRistretto255, i.tokenKey)
 
 	tokenInput := token.AuthenticatorInput()
@@ -281,7 +282,7 @@ func (i BatchedPrivateIssuer) Verify(token Token) error {
 		return err
 	}
 	if !bytes.Equal(output, token.Authenticator) {
-		return fmt.Errorf("Token authentication mismatch")
+		return fmt.Errorf("token authentication mismatch")
 	}
 
 	return nil

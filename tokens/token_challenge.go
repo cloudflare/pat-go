@@ -1,4 +1,4 @@
-package pat
+package tokens
 
 import (
 	"bytes"
@@ -9,12 +9,12 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 )
 
-// struct {
-//     uint16_t token_type;
-//     opaque issuer_name<1..2^16-1>;
-//     opaque redemption_nonce<0..32>;
-//     opaque origin_name<0..2^16-1>;
-// } TokenChallenge;
+//	struct {
+//	    uint16_t token_type;
+//	    opaque issuer_name<1..2^16-1>;
+//	    opaque redemption_nonce<0..32>;
+//	    opaque origin_name<0..2^16-1>;
+//	} TokenChallenge;
 type TokenChallenge struct {
 	TokenType       uint16
 	IssuerName      string
@@ -53,25 +53,25 @@ func UnmarshalTokenChallenge(data []byte) (TokenChallenge, error) {
 	challenge := TokenChallenge{}
 
 	if !s.ReadUint16(&challenge.TokenType) {
-		return TokenChallenge{}, fmt.Errorf("Invalid TokenChallenge encoding")
+		return TokenChallenge{}, fmt.Errorf("invalid TokenChallenge encoding")
 	}
 
 	var issuerName cryptobyte.String
 	if !s.ReadUint16LengthPrefixed(&issuerName) || issuerName.Empty() {
-		return TokenChallenge{}, fmt.Errorf("Invalid TokenChallenge encoding")
+		return TokenChallenge{}, fmt.Errorf("invalid TokenChallenge encoding")
 	}
 	challenge.IssuerName = string(issuerName)
 
 	var redemptionNonce cryptobyte.String
 	if !s.ReadUint8LengthPrefixed(&redemptionNonce) {
-		return TokenChallenge{}, fmt.Errorf("Invalid TokenChallenge encoding")
+		return TokenChallenge{}, fmt.Errorf("invalid TokenChallenge encoding")
 	}
 	challenge.RedemptionNonce = make([]byte, len(redemptionNonce))
 	copy(challenge.RedemptionNonce, redemptionNonce)
 
 	var originInfo cryptobyte.String
 	if !s.ReadUint16LengthPrefixed(&originInfo) {
-		return TokenChallenge{}, fmt.Errorf("Invalid TokenRequest encoding")
+		return TokenChallenge{}, fmt.Errorf("invalid TokenRequest encoding")
 	}
 	challenge.OriginInfo = strings.Split(string(originInfo), ",")
 

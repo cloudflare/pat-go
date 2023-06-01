@@ -1,4 +1,4 @@
-package pat
+package type1
 
 import (
 	"bytes"
@@ -8,6 +8,7 @@ import (
 	"github.com/cloudflare/circl/group"
 	"github.com/cloudflare/circl/oprf"
 	"github.com/cloudflare/circl/zk/dleq"
+	"github.com/cloudflare/pat-go/tokens"
 )
 
 type BasicPrivateClient struct {
@@ -29,17 +30,17 @@ func (s BasicPrivateTokenRequestState) Request() *BasicPrivateTokenRequest {
 	return s.request
 }
 
-func (s BasicPrivateTokenRequestState) FinalizeToken(tokenResponseEnc []byte) (Token, error) {
+func (s BasicPrivateTokenRequestState) FinalizeToken(tokenResponseEnc []byte) (tokens.Token, error) {
 	evaluatedElement := group.P384.NewElement()
 	err := evaluatedElement.UnmarshalBinary(tokenResponseEnc[:group.P384.Params().CompressedElementLength])
 	if err != nil {
-		return Token{}, err
+		return tokens.Token{}, err
 	}
 
 	proof := new(dleq.Proof)
 	err = proof.UnmarshalBinary(group.P384, tokenResponseEnc[group.P384.Params().CompressedElementLength:])
 	if err != nil {
-		return Token{}, err
+		return tokens.Token{}, err
 	}
 
 	evaluation := &oprf.Evaluation{
@@ -48,13 +49,13 @@ func (s BasicPrivateTokenRequestState) FinalizeToken(tokenResponseEnc []byte) (T
 	}
 	outputs, err := s.client.Finalize(s.verifier, evaluation)
 	if err != nil {
-		return Token{}, err
+		return tokens.Token{}, err
 	}
 
 	tokenData := append(s.tokenInput, outputs[0]...)
 	token, err := UnmarshalPrivateToken(tokenData)
 	if err != nil {
-		return Token{}, err
+		return tokens.Token{}, err
 	}
 
 	return token, nil
@@ -65,7 +66,7 @@ func (c BasicPrivateClient) CreateTokenRequest(challenge, nonce []byte, tokenKey
 	client := oprf.NewVerifiableClient(oprf.SuiteP384, verificationKey)
 
 	context := sha256.Sum256(challenge)
-	token := Token{
+	token := tokens.Token{
 		TokenType:     BasicPrivateTokenType,
 		Nonce:         nonce,
 		Context:       context[:],
@@ -102,7 +103,7 @@ func (c BasicPrivateClient) CreateTokenRequestWithBlind(challenge, nonce []byte,
 	client := oprf.NewVerifiableClient(oprf.SuiteP384, verificationKey)
 
 	context := sha256.Sum256(challenge)
-	token := Token{
+	token := tokens.Token{
 		TokenType:     BasicPrivateTokenType,
 		Nonce:         nonce,
 		Context:       context[:],
@@ -198,7 +199,7 @@ func (i BasicPrivateIssuer) Evaluate(req *BasicPrivateTokenRequest) ([]byte, err
 	return tokenResponse, nil
 }
 
-func (i BasicPrivateIssuer) Verify(token Token) error {
+func (i BasicPrivateIssuer) Verify(token tokens.Token) error {
 	server := oprf.NewVerifiableServer(oprf.SuiteP384, i.tokenKey)
 
 	tokenInput := token.AuthenticatorInput()
@@ -207,7 +208,7 @@ func (i BasicPrivateIssuer) Verify(token Token) error {
 		return err
 	}
 	if !bytes.Equal(output, token.Authenticator) {
-		return fmt.Errorf("Token authentication mismatch")
+		return fmt.Errorf("token authentication mismatch")
 	}
 
 	return nil

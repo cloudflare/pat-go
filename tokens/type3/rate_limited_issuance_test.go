@@ -1,4 +1,4 @@
-package pat
+package type3
 
 import (
 	"bytes"

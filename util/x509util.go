@@ -1,4 +1,4 @@
-package pat
+package util
 
 import (
 	"crypto/rsa"
@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/cloudflare/circl/oprf"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 )
@@ -42,7 +43,7 @@ func marshalTokenPrivateKey(key *rsa.PrivateKey) ([]byte, error) {
 func unmarshalTokenPrivateKey(data []byte) (*rsa.PrivateKey, error) {
 	block, _ := pem.Decode(data)
 	if block == nil || block.Type != "PRIVATE KEY" {
-		return nil, fmt.Errorf("Invalid private key encoding")
+		return nil, fmt.Errorf("invalid private key encoding")
 	}
 
 	privateKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
@@ -108,17 +109,17 @@ func UnmarshalTokenKey(data []byte) (*rsa.PublicKey, error) {
 
 	var sequenceString cryptobyte.String
 	if !s.ReadASN1(&sequenceString, cryptobyte_asn1.SEQUENCE.Constructed()) {
-		return nil, fmt.Errorf("Invalid SPKI token key encoding (failed reading outer sequence)")
+		return nil, fmt.Errorf("invalid SPKI token key encoding (failed reading outer sequence)")
 	}
 
 	var paramsString cryptobyte.String
 	if !sequenceString.ReadASN1(&paramsString, cryptobyte_asn1.SEQUENCE.Constructed()) {
-		return nil, fmt.Errorf("Invalid SPKI token key encoding (failed reading parameters)")
+		return nil, fmt.Errorf("invalid SPKI token key encoding (failed reading parameters)")
 	}
 
 	var publicKeyString asn1.BitString
 	if !sequenceString.ReadASN1BitString(&publicKeyString) {
-		return nil, fmt.Errorf("Invalid SPKI token key encoding (failed reading public key)")
+		return nil, fmt.Errorf("invalid SPKI token key encoding (failed reading public key)")
 	}
 
 	der := cryptobyte.String(publicKeyString.RightAlign())
@@ -138,4 +139,38 @@ func UnmarshalTokenKey(data []byte) (*rsa.PublicKey, error) {
 	key.E = p.E
 
 	return key, nil
+}
+
+func MustMarshalPrivateOPRFKey(key *oprf.PrivateKey) []byte {
+	encodedKey, err := key.MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
+	return encodedKey
+}
+
+func MustUnmarshalPrivateOPRFKey(data []byte) *oprf.PrivateKey {
+	key := new(oprf.PrivateKey)
+	err := key.UnmarshalBinary(oprf.SuiteP384, data)
+	if err != nil {
+		panic(err)
+	}
+	return key
+}
+
+func MustMarshalPublicOPRFKey(key *oprf.PublicKey) []byte {
+	encodedKey, err := key.MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
+	return encodedKey
+}
+
+func MustUnmarshalPublicOPRFKey(data []byte) *oprf.PublicKey {
+	key := new(oprf.PublicKey)
+	err := key.UnmarshalBinary(oprf.SuiteP384, data)
+	if err != nil {
+		panic(err)
+	}
+	return key
 }

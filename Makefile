@@ -1,5 +1,5 @@
 test:
-	go test
+	go test ./...
 
 vectors: test
 	ED25519_BLINDING_TEST_VECTORS_OUT=ed25519-blinding-test-vectors.json go test -v -run TestVectorGenerateEd25519Blinding

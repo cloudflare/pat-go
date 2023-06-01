@@ -1,4 +1,4 @@
-package pat
+package type1
 
 import (
 	"bytes"
@@ -11,12 +11,26 @@ import (
 
 	"github.com/cloudflare/circl/oprf"
 	"golang.org/x/crypto/hkdf"
+
+	"github.com/cloudflare/pat-go/tokens"
+	"github.com/cloudflare/pat-go/util"
 )
 
 const (
 	outputBasicPrivateIssuanceTestVectorEnvironmentKey = "BASIC_PRIVATE_ISSUANCE_TEST_VECTORS_OUT"
 	inputBasicPrivateIssuanceTestVectorEnvironmentKey  = "BASIC_PRIVATE_ISSUANCE_TEST_VECTORS_IN"
 )
+
+func createTokenChallenge(tokenType uint16, redemptionContext []byte, issuerName string, originInfo []string) tokens.TokenChallenge {
+	challenge := tokens.TokenChallenge{
+		TokenType:       tokenType,
+		RedemptionNonce: make([]byte, len(redemptionContext)),
+		IssuerName:      issuerName,
+		OriginInfo:      originInfo,
+	}
+	copy(challenge.RedemptionNonce, redemptionContext)
+	return challenge
+}
 
 func TestBasicPrivateIssuanceRoundTrip(t *testing.T) {
 	tokenKey, err := oprf.GenerateKey(oprf.SuiteP384, rand.Reader)
@@ -102,50 +116,16 @@ func (tva *BasicPrivateIssuanceTestVectorArray) UnmarshalJSON(data []byte) error
 	return nil
 }
 
-func mustMarshalPrivateOPRFKey(key *oprf.PrivateKey) []byte {
-	encodedKey, err := key.MarshalBinary()
-	if err != nil {
-		panic(err)
-	}
-	return encodedKey
-}
-
-func mustUnmarshalPrivateOPRFKey(data []byte) *oprf.PrivateKey {
-	key := new(oprf.PrivateKey)
-	err := key.UnmarshalBinary(oprf.SuiteP384, data)
-	if err != nil {
-		panic(err)
-	}
-	return key
-}
-
-func mustMarshalPublicOPRFKey(key *oprf.PublicKey) []byte {
-	encodedKey, err := key.MarshalBinary()
-	if err != nil {
-		panic(err)
-	}
-	return encodedKey
-}
-
-func mustUnmarshalPublicOPRFKey(data []byte) *oprf.PublicKey {
-	key := new(oprf.PublicKey)
-	err := key.UnmarshalBinary(oprf.SuiteP384, data)
-	if err != nil {
-		panic(err)
-	}
-	return key
-}
-
 func (etv BasicPrivateIssuanceTestVector) MarshalJSON() ([]byte, error) {
 	return json.Marshal(rawBasicPrivateIssuanceTestVector{
-		PrivateKey:    mustHex(mustMarshalPrivateOPRFKey(etv.skS)),
-		PublicKey:     mustHex(mustMarshalPublicOPRFKey(etv.skS.Public())),
-		Challenge:     mustHex(etv.challenge),
-		Nonce:         mustHex(etv.nonce),
-		Blind:         mustHex(etv.blind),
-		TokenRequest:  mustHex(etv.tokenRequest),
-		TokenResponse: mustHex(etv.tokenResponse),
-		Token:         mustHex(etv.token),
+		PrivateKey:    util.MustHex(util.MustMarshalPrivateOPRFKey(etv.skS)),
+		PublicKey:     util.MustHex(util.MustMarshalPublicOPRFKey(etv.skS.Public())),
+		Challenge:     util.MustHex(etv.challenge),
+		Nonce:         util.MustHex(etv.nonce),
+		Blind:         util.MustHex(etv.blind),
+		TokenRequest:  util.MustHex(etv.tokenRequest),
+		TokenResponse: util.MustHex(etv.tokenResponse),
+		Token:         util.MustHex(etv.token),
 	})
 }
 
@@ -156,18 +136,18 @@ func (etv *BasicPrivateIssuanceTestVector) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	etv.skS = mustUnmarshalPrivateOPRFKey(mustUnhex(nil, raw.PrivateKey))
-	etv.challenge = mustUnhex(nil, raw.Challenge)
-	etv.nonce = mustUnhex(nil, raw.Nonce)
-	etv.blind = mustUnhex(nil, raw.Blind)
-	etv.tokenRequest = mustUnhex(nil, raw.TokenRequest)
-	etv.tokenResponse = mustUnhex(nil, raw.TokenResponse)
-	etv.token = mustUnhex(nil, raw.Token)
+	etv.skS = util.MustUnmarshalPrivateOPRFKey(util.MustUnhex(nil, raw.PrivateKey))
+	etv.challenge = util.MustUnhex(nil, raw.Challenge)
+	etv.nonce = util.MustUnhex(nil, raw.Nonce)
+	etv.blind = util.MustUnhex(nil, raw.Blind)
+	etv.tokenRequest = util.MustUnhex(nil, raw.TokenRequest)
+	etv.tokenResponse = util.MustUnhex(nil, raw.TokenResponse)
+	etv.token = util.MustUnhex(nil, raw.Token)
 
 	return nil
 }
 
-func generateBasicPrivateIssuanceBlindingTestVector(t *testing.T, client *BasicPrivateClient, issuer *BasicPrivateIssuer, tokenChallenge TokenChallenge) BasicPrivateIssuanceTestVector {
+func generateBasicPrivateIssuanceBlindingTestVector(t *testing.T, client *BasicPrivateClient, issuer *BasicPrivateIssuer, tokenChallenge tokens.TokenChallenge) BasicPrivateIssuanceTestVector {
 	challenge := tokenChallenge.Marshal()
 
 	nonce := make([]byte, 32)
@@ -256,7 +236,7 @@ func TestVectorGenerateBasicPrivateIssuance(t *testing.T) {
 	redemptionContext := make([]byte, 32)
 	hkdf.Read(redemptionContext)
 
-	challenges := []TokenChallenge{
+	challenges := []tokens.TokenChallenge{
 		createTokenChallenge(BasicPrivateTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
 		createTokenChallenge(BasicPrivateTokenType, nil, "issuer.example", []string{"origin.example"}),
 		createTokenChallenge(BasicPrivateTokenType, nil, "issuer.example", []string{"foo.example,bar.example"}),

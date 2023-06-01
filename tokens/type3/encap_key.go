@@ -1,4 +1,4 @@
-package pat
+package type3
 
 import (
 	"bytes"
@@ -79,13 +79,13 @@ func (k PrivateEncapKey) IsEqual(o PrivateEncapKey) bool {
 // uint16 HpkeKdfId;          // defined in I-D.irtf-cfrg-hpke
 // uint16 HpkeAeadId;         // defined in I-D.irtf-cfrg-hpke
 //
-// struct {
-//   uint8 key_id;
-//   HpkeKemId kem_id;
-//   HpkePublicKey public_key;
-//   HpkeKdfId kdf_id;
-//   HpkeAeadId aead_id;
-// } EncapKey;
+//	struct {
+//	  uint8 key_id;
+//	  HpkeKemId kem_id;
+//	  HpkePublicKey public_key;
+//	  HpkeKdfId kdf_id;
+//	  HpkeAeadId aead_id;
+//	} EncapKey;
 func (k EncapKey) Marshal() []byte {
 	b := cryptobyte.NewBuilder(nil)
 

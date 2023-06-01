@@ -1,18 +1,66 @@
-package pat
+package tokens
 
 import (
 	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
+
+	util "github.com/cloudflare/pat-go/util"
 )
+
+// 2048-bit RSA private key
+const testTokenPrivateKey = `
+-----BEGIN RSA PRIVATE KEY-----
+MIIEowIBAAKCAQEAyxrta2qV9bHOATpM/KsluUsuZKIwNOQlCn6rQ8DfOowSmTrx
+KxEZCNS0cb7DHUtsmtnN2pBhKi7pA1I+beWiJNawLwnlw3TQz+Adj1KcUAp4ovZ5
+CPpoK1orQwyB6vGvcte155T8mKMTknaHl1fORTtSbvm/bOuZl5uEI7kPRGGiKvN6
+qwz1cz91l6vkTTHHMttooYHGy75gfYwOUuBlX9mZbcWE7KC+h6+814ozfRex26no
+KLvYHikTFxROf/ifVWGXCbCWy7nqR0zq0mTCBz/kl0DAHwDhCRBgZpg9IeX4Pwhu
+LoI8h5zUPO9wDSo1Kpur1hLQPK0C2xNLfiJaXwIDAQABAoIBAC8wm3c4tYz3efDJ
+Ffgi38n0kNvq3x5636xXj/1XA8a7otqdWklyWIm3uhEvjG/zBVHZRz4AC8NcUOFn
+q3+nOgwrIZZcS1klfBrAbL3PKOhj9nGOqMKQQ8HG2oRilJD9BJG/UtFyyVnBkhuW
+lJxyV0e4p8eHGZX6C56xEHuoVMbDKm9HR8XRwwTHRn1VsICqIzo6Uv/fJhFMu1Qf
++mtpa3oJb43P9pygirWO+w+3U6pRhccwAWlrvOjAmeP0Ndy7/gXn26rSPbKmWcI6
+3VIUB/FQsa8tkFTEFkIp1oQLejKk+EgUk66JWc8K6o3vDDyfdbmjTHVxi3ByyNur
+F87+ykkCgYEA73MLD1FLwPWdmV/V+ZiMTEwTXRBc1W1D7iigNclp9VDAzXFI6ofs
+3v+5N8hcZIdEBd9W6utHi/dBiEogDuSjljPRCqPsQENm2itTHzmNRvvI8wV1KQbP
+eJOd0vPMl5iup8nYL+9ASfGYeX5FKlttKEm4ZIY0XUsx9pERoq4PlEsCgYEA2STJ
+68thMWv9xKuz26LMQDzImJ5OSQD0hsts9Ge01G/rh0Dv/sTzO5wtLsiyDA/ZWkzB
+8J+rO/y2xqBD9VkYKaGB/wdeJP0Z+n7sETetiKPbXPfgAi7VAe77Rmst/oEcGLUg
+tm+XnfJSInoLU5HmtIdLg0kcQLVbN5+ZMmtkPb0CgYBSbhczmbfrYGJ1p0FBIFvD
+9DiCRBzBOFE3TnMAsSqx0a/dyY7hdhN8HSqE4ouz68DmCKGiU4aYz3CW23W3ysvp
+7EKdWBr/cHSazGlcCXLyKcFer9VKX1bS2nZtZZJb6arOhjTPI5zNF8d2o5pp33lv
+chlxOaYTK8yyZfRdPXCNiwKBgQDV77oFV66dm7E9aJHerkmgbIKSYz3sDUXd3GSv
+c9Gkj9Q0wNTzZKXkMB4P/un0mlTh88gMQ7PYeUa28UWjX7E/qwFB+8dUmA1VUGFT
+IVEW06GXuhv46p0wt3zXx1dcbWX6LdJaDB4MHqevkiDAqHntmXLbmVd9pXCGn/a2
+xznO3QKBgHkPJPEiCzRugzgN9UxOT5tNQCSGMOwJUd7qP0TWgvsWHT1N07JLgC8c
+Yg0f1rCxEAQo5BVppiQFp0FA7W52DUnMEfBtiehZ6xArW7crO91gFRqKBWZ3Jjyz
+/JcS8m5UgQxC8mmb/2wLD5TDvWw+XCfjUgWmvqIi5dcJgmuTAn5X
+-----END RSA PRIVATE KEY-----`
+
+func loadPrivateKey(t *testing.T) *rsa.PrivateKey {
+	block, _ := pem.Decode([]byte(testTokenPrivateKey))
+	if block == nil || block.Type != "RSA PRIVATE KEY" {
+		t.Fatal("PEM private key decoding failed")
+	}
+
+	privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return privateKey
+}
 
 const (
 	outputTokenTestVectorEnvironmentKey = "TOKEN_TEST_VECTORS_OUT"
@@ -34,7 +82,7 @@ func TestTokenChallengeMarshal(t *testing.T) {
 	context := make([]byte, 32)
 	rand.Reader.Read(context)
 
-	challenge := createTokenChallenge(RateLimitedTokenType, context, "issuer.example", []string{"origin.example"})
+	challenge := createTokenChallenge(0x0003, context, "issuer.example", []string{"origin.example"})
 	challengeEnc := challenge.Marshal()
 	recoveredChallenge, err := UnmarshalTokenChallenge(challengeEnc)
 	if err != nil {
@@ -113,12 +161,12 @@ func (tva *tokenTestVectorArray) UnmarshalJSON(data []byte) error {
 func (etv tokenTestVector) MarshalJSON() ([]byte, error) {
 	return json.Marshal(rawTokenTestVector{
 		TokenType:               etv.tokenType,
-		IssuerName:              mustHex([]byte(etv.issuerName)),
-		RedemptionContext:       mustHex(etv.redemptionContext),
-		OriginInfo:              mustHex([]byte(strings.Join(etv.originInfo, ","))),
-		Nonce:                   mustHex(etv.nonce),
-		TokenKeyId:              mustHex(etv.tokenKeyId),
-		TokenAuthenticatorInput: mustHex(etv.tokenAuthenticatorInput),
+		IssuerName:              util.MustHex([]byte(etv.issuerName)),
+		RedemptionContext:       util.MustHex(etv.redemptionContext),
+		OriginInfo:              util.MustHex([]byte(strings.Join(etv.originInfo, ","))),
+		Nonce:                   util.MustHex(etv.nonce),
+		TokenKeyId:              util.MustHex(etv.tokenKeyId),
+		TokenAuthenticatorInput: util.MustHex(etv.tokenAuthenticatorInput),
 	})
 }
 
@@ -130,22 +178,22 @@ func (etv *tokenTestVector) UnmarshalJSON(data []byte) error {
 	}
 
 	etv.tokenType = raw.TokenType
-	etv.issuerName = string(mustUnhex(nil, raw.IssuerName))
-	etv.redemptionContext = mustUnhex(nil, raw.RedemptionContext)
-	etv.originInfo = strings.Split(string(mustUnhex(nil, raw.OriginInfo)), ",")
-	etv.nonce = mustUnhex(nil, raw.Nonce)
-	etv.tokenKeyId = mustUnhex(nil, raw.TokenKeyId)
-	etv.tokenAuthenticatorInput = mustUnhex(nil, raw.TokenAuthenticatorInput)
+	etv.issuerName = string(util.MustUnhex(nil, raw.IssuerName))
+	etv.redemptionContext = util.MustUnhex(nil, raw.RedemptionContext)
+	etv.originInfo = strings.Split(string(util.MustUnhex(nil, raw.OriginInfo)), ",")
+	etv.nonce = util.MustUnhex(nil, raw.Nonce)
+	etv.tokenKeyId = util.MustUnhex(nil, raw.TokenKeyId)
+	etv.tokenAuthenticatorInput = util.MustUnhex(nil, raw.TokenAuthenticatorInput)
 
 	return nil
 }
 
 func generateTokenTestVector(t *testing.T, tokenType uint16, redemptionContext []byte, issuerName string, originInfo []string, nonce []byte, tokenSigningKey *rsa.PrivateKey) (tokenTestVector, error) {
-	if tokenType != RateLimitedTokenType && tokenType != BasicPublicTokenType {
+	if tokenType != 0x0003 && tokenType != 0x0002 {
 		return tokenTestVector{}, fmt.Errorf("Unsupported token type")
 	}
 
-	tokenKeyID := sha256.Sum256(mustMarshalPublicKey(&tokenSigningKey.PublicKey))
+	tokenKeyID := sha256.Sum256(util.MustMarshalPublicKey(&tokenSigningKey.PublicKey))
 	challenge := createTokenChallenge(tokenType, redemptionContext, issuerName, originInfo)
 	context := sha256.Sum256(challenge.Marshal())
 	token := Token{
@@ -168,7 +216,7 @@ func generateTokenTestVector(t *testing.T, tokenType uint16, redemptionContext [
 }
 
 func verifyTokenTestVector(t *testing.T, vector tokenTestVector) {
-	if vector.tokenType != RateLimitedTokenType && vector.tokenType != BasicPublicTokenType {
+	if vector.tokenType != 0x0003 && vector.tokenType != 0x0002 {
 		t.Fatal("Unsupported token type")
 	}
 
@@ -221,35 +269,35 @@ func TestVectorGenerateToken(t *testing.T) {
 		nonce             []byte
 	}{
 		{
-			BasicPublicTokenType,
+			0x0002,
 			issuerName,
 			redemptonContext,
 			singleOriginInfo,
 			nonce,
 		},
 		{
-			BasicPublicTokenType,
+			0x0002,
 			issuerName,
 			nil,
 			singleOriginInfo,
 			nonce,
 		},
 		{
-			BasicPublicTokenType,
+			0x0002,
 			issuerName,
 			nil,
 			nil,
 			nonce,
 		},
 		{
-			BasicPublicTokenType,
+			0x0002,
 			issuerName,
 			redemptonContext,
 			nil,
 			nonce,
 		},
 		{
-			BasicPublicTokenType,
+			0x0002,
 			issuerName,
 			redemptonContext,
 			multipleOriginInfo,
