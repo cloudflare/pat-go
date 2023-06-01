@@ -139,9 +139,9 @@ func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 	issuer.AddOrigin(testOrigin)
 
 	curve := elliptic.P384()
-	secretKey, err := ecdsa.GenerateKey(curve, rand.Reader)
-	blindKey, err := ecdsa.GenerateKey(curve, rand.Reader)
-	client := NewRateLimitedClientFromSecret(secretKey.D.Bytes())
+	clientSecretKey, err := ecdsa.GenerateKey(curve, rand.Reader)
+	requestKey, err := ecdsa.GenerateKey(curve, rand.Reader)
+	client := NewRateLimitedClientFromSecret(clientSecretKey.D.Bytes())
 	attester := NewRateLimitedAttester(NewMemoryClientStateCache())
 
 	challenge := make([]byte, 32)
@@ -157,23 +157,24 @@ func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 	tokenPublicKey := issuer.TokenKey()
 	originIndexKey := issuer.OriginIndexKey(testOrigin)
 
-	requestState, err := client.CreateTokenRequest(challenge, nonce, blindKey.D.Bytes(), tokenKeyID, tokenPublicKey, testOrigin, issuer.NameKey())
+	requestState, err := client.CreateTokenRequest(challenge, nonce, requestKey.D.Bytes(), tokenKeyID, tokenPublicKey, testOrigin, issuer.NameKey())
 	if err != nil {
 		t.Error(err)
 	}
 
 	publicKeyEnc := elliptic.MarshalCompressed(curve, client.secretKey.PublicKey.X, client.secretKey.PublicKey.Y)
 
-	err = attester.VerifyRequest(*requestState.Request(), blindKey.D.Bytes(), publicKeyEnc, anonymousOriginID)
+	err = attester.VerifyRequest(*requestState.Request(), requestKey.D.Bytes(), publicKeyEnc, anonymousOriginID)
 	if err != nil {
 		t.Error(err)
 	}
 
-	blindedSignature, blindedPublicKey, err := issuer.Evaluate(requestState.Request())
+	blindedSignature, blindedPublicKey, err := issuer.Evaluate(requestState.Request().Marshal())
 	if err != nil {
 		t.Error(err)
 	}
 
+	// XXX(caw): move this to a function on the issuer/attester for computing request keys
 	b := cryptobyte.NewBuilder(nil)
 	b.AddUint16(RateLimitedTokenType)
 	b.AddBytes([]byte("IssuerBlind"))
@@ -189,7 +190,7 @@ func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 		t.Error(err)
 	}
 
-	index, err := attester.FinalizeIndex(publicKeyEnc, blindKey.D.Bytes(), blindedPublicKey, anonymousOriginID)
+	index, err := attester.FinalizeIndex(publicKeyEnc, requestKey.D.Bytes(), blindedPublicKey, anonymousOriginID)
 	if err != nil {
 		t.Error(err)
 	}
@@ -266,7 +267,7 @@ func TestRateLimitedIssuerOriginRepeatFailure(t *testing.T) {
 		t.Error(err)
 	}
 
-	blindedSignature, blindedPublicKey, err := issuer.Evaluate(requestState.Request())
+	blindedSignature, blindedPublicKey, err := issuer.Evaluate(requestState.Request().Marshal())
 	if err != nil {
 		t.Error(err)
 	}
@@ -294,7 +295,7 @@ func TestRateLimitedIssuerOriginRepeatFailure(t *testing.T) {
 		t.Error(err)
 	}
 
-	blindedSignature, blindedPublicKey, err = issuer.Evaluate(requestState.Request())
+	blindedSignature, blindedPublicKey, err = issuer.Evaluate(requestState.Request().Marshal())
 	if err != nil {
 		t.Error(err)
 	}
@@ -793,7 +794,7 @@ func BenchmarkRateLimitedTokenRoundTrip(b *testing.B) {
 
 	curve := elliptic.P384()
 	secretKey, err := ecdsa.GenerateKey(curve, rand.Reader)
-	blindKey, err := ecdsa.GenerateKey(curve, rand.Reader)
+	requestKey, err := ecdsa.GenerateKey(curve, rand.Reader)
 	client := NewRateLimitedClientFromSecret(secretKey.D.Bytes())
 
 	challenge := make([]byte, 32)
@@ -803,10 +804,12 @@ func BenchmarkRateLimitedTokenRoundTrip(b *testing.B) {
 
 	var requestState RateLimitedTokenRequestState
 	b.Run("ClientRequest", func(b *testing.B) {
+		requestKey := requestKey.D.Bytes()
+		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
 			nonce := make([]byte, 32)
 			rand.Reader.Read(nonce)
-			requestState, err = client.CreateTokenRequest(challenge, nonce, blindKey.D.Bytes(), issuer.TokenKeyID(), issuer.TokenKey(), testOrigin, issuer.NameKey())
+			requestState, err = client.CreateTokenRequest(challenge, nonce, requestKey, issuer.TokenKeyID(), issuer.TokenKey(), testOrigin, issuer.NameKey())
 			if err != nil {
 				b.Error(err)
 			}
@@ -817,7 +820,7 @@ func BenchmarkRateLimitedTokenRoundTrip(b *testing.B) {
 		publicKeyEnc := elliptic.MarshalCompressed(curve, client.secretKey.PublicKey.X, client.secretKey.PublicKey.Y)
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			err = attester.VerifyRequest(*requestState.Request(), blindKey.D.Bytes(), publicKeyEnc, anonymousOriginID)
+			err = attester.VerifyRequest(*requestState.Request(), requestKey.D.Bytes(), publicKeyEnc, anonymousOriginID)
 			if err != nil {
 				b.Error(err)
 			}
@@ -827,8 +830,10 @@ func BenchmarkRateLimitedTokenRoundTrip(b *testing.B) {
 	var blindedSignature []byte
 	var blindedPublicKey []byte
 	b.Run("IssuerEvaluate", func(b *testing.B) {
+		encodedRequest := requestState.Request().Marshal()
+		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			blindedSignature, blindedPublicKey, err = issuer.Evaluate(requestState.Request())
+			blindedSignature, blindedPublicKey, err = issuer.Evaluate(encodedRequest)
 			if err != nil {
 				b.Error(err)
 			}
@@ -839,7 +844,7 @@ func BenchmarkRateLimitedTokenRoundTrip(b *testing.B) {
 		publicKeyEnc := elliptic.MarshalCompressed(curve, client.secretKey.PublicKey.X, client.secretKey.PublicKey.Y)
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			_, err = attester.FinalizeIndex(publicKeyEnc, blindKey.D.Bytes(), blindedPublicKey, anonymousOriginID)
+			_, err = attester.FinalizeIndex(publicKeyEnc, requestKey.D.Bytes(), blindedPublicKey, anonymousOriginID)
 			if err != nil {
 				b.Error(err)
 			}

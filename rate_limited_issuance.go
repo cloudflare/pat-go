@@ -430,7 +430,12 @@ func decryptOriginTokenRequest(nameKey PrivateEncapKey, requestKey []byte, encry
 }
 
 // https://ietf-wg-privacypass.github.io/draft-ietf-privacypass-rate-limit-tokens/draft-ietf-privacypass-rate-limit-tokens.html#name-issuer-to-attester-response
-func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byte, error) {
+func (i RateLimitedIssuer) Evaluate(encodedRequest []byte) ([]byte, []byte, error) {
+	req := &RateLimitedTokenRequest{}
+	if !req.Unmarshal(encodedRequest) {
+		return nil, nil, fmt.Errorf("malformed request")
+	}
+
 	// Recover and validate the origin name
 	originTokenRequest, secret, err := decryptOriginTokenRequest(i.nameKey, req.RequestKey, req.EncryptedTokenRequest)
 	if err != nil {
@@ -441,7 +446,7 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 	// Check to see if it's a registered origin
 	originIndexKey, ok := i.originIndexKeys[originName]
 	if !ok {
-		return nil, nil, fmt.Errorf("Unknown origin: %s", originName)
+		return nil, nil, fmt.Errorf("unknown origin: %s", originName)
 	}
 
 	// Deserialize the request key
@@ -470,7 +475,7 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 
 	valid := ecdsa.Verify(requestKey, digest, r, s)
 	if !valid {
-		return nil, nil, fmt.Errorf("Invalid request signature")
+		return nil, nil, fmt.Errorf("invalid request signature")
 	}
 
 	// Compute the request key
