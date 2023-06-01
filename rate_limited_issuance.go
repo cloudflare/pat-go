@@ -445,9 +445,9 @@ func (i RateLimitedIssuer) Evaluate(req *RateLimitedTokenRequest) ([]byte, []byt
 	}
 
 	// Deserialize the request key
-	x, y := elliptic.UnmarshalCompressed(i.curve, req.RequestKey)
-	requestKey := &ecdsa.PublicKey{
-		i.curve, x, y,
+	requestKey, err := unmarshalPublicKey(i.curve, req.RequestKey)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	scalarLen := (i.curve.Params().Params().BitSize + 7) / 8
@@ -538,12 +538,23 @@ func NewRateLimitedAttester(cache ClientStateCache) *RateLimitedAttester {
 	}
 }
 
+func unmarshalPublicKey(curve elliptic.Curve, encodedKey []byte) (*ecdsa.PublicKey, error) {
+	x, y := elliptic.UnmarshalCompressed(curve, encodedKey)
+	if x == nil || y == nil {
+		return nil, fmt.Errorf("invalid public key")
+	}
+	publicKey := &ecdsa.PublicKey{
+		curve, x, y,
+	}
+	return publicKey, nil
+}
+
 func (a *RateLimitedAttester) innerVerifyRequest(tokenRequest RateLimitedTokenRequest) error {
 	// Deserialize the request key
 	curve := elliptic.P384()
-	x, y := elliptic.UnmarshalCompressed(curve, tokenRequest.RequestKey)
-	requestKey := &ecdsa.PublicKey{
-		curve, x, y,
+	requestKey, err := unmarshalPublicKey(curve, tokenRequest.RequestKey)
+	if err != nil {
+		return err
 	}
 
 	scalarLen := (curve.Params().Params().BitSize + 7) / 8
@@ -572,13 +583,23 @@ func (a *RateLimitedAttester) innerVerifyRequest(tokenRequest RateLimitedTokenRe
 	return nil
 }
 
-func (a *RateLimitedAttester) VerifyRequest(tokenRequest RateLimitedTokenRequest, blindKey *ecdsa.PrivateKey, clientKey *ecdsa.PublicKey, anonymousOrigin []byte) error {
+func (a *RateLimitedAttester) VerifyRequest(tokenRequest RateLimitedTokenRequest, blindKeyEnc, clientKeyEnc, anonymousOrigin []byte) error {
 	err := a.innerVerifyRequest(tokenRequest)
 	if err != nil {
 		return nil
 	}
 
 	curve := elliptic.P384()
+	clientKey, err := unmarshalPublicKey(curve, clientKeyEnc)
+	if err != nil {
+		return err
+	}
+
+	blindKey, err := ecdsa.CreateKey(curve, blindKeyEnc)
+	if err != nil {
+		return nil
+	}
+
 	b := cryptobyte.NewBuilder(nil)
 	b.AddUint16(RateLimitedTokenType)
 	b.AddBytes([]byte("ClientBlind"))
@@ -592,15 +613,15 @@ func (a *RateLimitedAttester) VerifyRequest(tokenRequest RateLimitedTokenRequest
 		return fmt.Errorf("Mismatch blinded public key")
 	}
 
-	clientKeyEnc := hex.EncodeToString(elliptic.MarshalCompressed(curve, clientKey.X, clientKey.Y))
-	_, ok := a.cache.Get(clientKeyEnc)
+	cacheKey := hex.EncodeToString(clientKeyEnc)
+	_, ok := a.cache.Get(hex.EncodeToString(clientKeyEnc))
 	if !ok {
 		state := &ClientState{
 			originIndices: make(map[string]string),
 			clientIndices: make(map[string]string),
 			originCounts:  make(map[string]int),
 		}
-		a.cache.Put(clientKeyEnc, state)
+		a.cache.Put(cacheKey, state)
 	}
 
 	return nil
@@ -618,9 +639,9 @@ func computeIndex(clientKey, indexKey []byte) ([]byte, error) {
 // https://ietf-wg-privacypass.github.io/draft-ietf-privacypass-rate-limit-tokens/draft-ietf-privacypass-rate-limit-tokens.html#name-attester-behavior-index-com
 func (a *RateLimitedAttester) FinalizeIndex(clientKey, blindEnc, blindedRequestKeyEnc, anonOriginId []byte) ([]byte, error) {
 	curve := elliptic.P384()
-	x, y := elliptic.UnmarshalCompressed(curve, blindedRequestKeyEnc)
-	blindedRequestKey := &ecdsa.PublicKey{
-		curve, x, y,
+	blindedRequestKey, err := unmarshalPublicKey(curve, blindedRequestKeyEnc)
+	if err != nil {
+		return nil, err
 	}
 
 	blindKey, err := ecdsa.CreateKey(curve, blindEnc)
