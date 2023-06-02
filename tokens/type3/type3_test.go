@@ -55,11 +55,11 @@ Yg0f1rCxEAQo5BVppiQFp0FA7W52DUnMEfBtiehZ6xArW7crO91gFRqKBWZ3Jjyz
 -----END RSA PRIVATE KEY-----`
 
 const (
-	outputAnonOriginIDTestVectorEnvironmentKey = "RATE_LIMITED_ANON_ORIGIN_ID_TEST_VECTORS_OUT"
-	inputAnonOriginIDTestVectorEnvironmentKey  = "RATE_LIMITED_ANON_ORIGIN_ID_TEST_VECTORS_IN"
+	outputAnonOriginIDTestVectorEnvironmentKey = "TYPE3_ANON_ORIGIN_ID_TEST_VECTORS_OUT"
+	inputAnonOriginIDTestVectorEnvironmentKey  = "TYPE3_ANON_ORIGIN_ID_TEST_VECTORS_IN"
 
-	outputOriginEncryptionTestVectorEnvironmentKey = "RATE_LIMITED_ORIGIN_ENCRYPTION_TEST_VECTORS_OUT"
-	inputOriginEncryptionTestVectorEnvironmentKey  = "RATE_LIMITED_ORIGIN_ENCRYPTION_TEST_VECTORS_IN"
+	outputOriginEncryptionTestVectorEnvironmentKey = "TYPE3_ORIGIN_ENCRYPTION_TEST_VECTORS_OUT"
+	inputOriginEncryptionTestVectorEnvironmentKey  = "TYPE3_ORIGIN_ENCRYPTION_TEST_VECTORS_IN"
 )
 
 func loadPrivateKey(t *testing.T) *rsa.PrivateKey {

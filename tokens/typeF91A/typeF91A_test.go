@@ -18,8 +18,8 @@ import (
 )
 
 const (
-	outputBatchedPrivateIssuanceTestVectorEnvironmentKey = "BATCHED_PRIVATE_ISSUANCE_TEST_VECTORS_OUT"
-	inputBatchedPrivateIssuanceTestVectorEnvironmentKey  = "BATCHED_PRIVATE_ISSUANCE_TEST_VECTORS_IN"
+	outputBatchedPrivateIssuanceTestVectorEnvironmentKey = "TYPE19FA_ISSUANCE_TEST_VECTORS_OUT"
+	inputBatchedPrivateIssuanceTestVectorEnvironmentKey  = "TYPE19FA_ISSUANCE_TEST_VECTORS_IN"
 )
 
 func createTokenChallenge(tokenType uint16, redemptionContext []byte, issuerName string, originInfo []string) tokens.TokenChallenge {

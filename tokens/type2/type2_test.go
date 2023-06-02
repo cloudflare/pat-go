@@ -81,8 +81,8 @@ func loadPrivateKeyForBenchmark(b *testing.B) *rsa.PrivateKey {
 }
 
 const (
-	outputBasicIssuanceTestVectorEnvironmentKey = "BASIC_PUBLIC_ISSUANCE_TEST_VECTORS_OUT"
-	inputBasicIssuanceTestVectorEnvironmentKey  = "BASIC_PUBLIC_ISSUANCE_TEST_VECTORS_IN"
+	outputBasicIssuanceTestVectorEnvironmentKey = "TYPE2_ISSUANCE_TEST_VECTORS_OUT"
+	inputBasicIssuanceTestVectorEnvironmentKey  = "TYPE2_ISSUANCE_TEST_VECTORS_IN"
 )
 
 func createTokenChallenge(tokenType uint16, redemptionContext []byte, issuerName string, originInfo []string) tokens.TokenChallenge {
