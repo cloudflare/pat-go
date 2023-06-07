@@ -29,13 +29,13 @@ Drilling into the details, this packing requires Token.token_key_id to be a fixe
 
 ## Feedback Loop
 
-The feedback loop for WEI tokens allows for attesters to learn about suspicious client devices from origins without learning which origin those clients are connecting to. This is done with four parties -- Attester, Issuer, Origin, and Auditor -- as shown below.
+The feedback loop for WEI tokens allows for attesters to learn about suspicious client devices from origins without learning which origin those clients are connecting to. This is done amongst five parties -- Client, Attester, Issuer, Origin, and Auditor. The flow of information in this feedback loop is below.
 
 ```mermaid
 graph TD;
     Client-->|Device-specific information|Attester;
     Attester-->|AttestationLabel|Issuer;
-    Issuer-->|IntegrityKey|Origin;
+    Issuer-->|AttestationLabel,IntegrityKey|Origin;
     Origin-->|AttestationLabel,IntegrityKey|Auditor;
     Auditor-->|ClientLabel|Attester;
 ```
