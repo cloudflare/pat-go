@@ -80,7 +80,3 @@ Each of these fields is as described below:
 Attestation labels are "minted" by the attester, and then propogated through the feedback loop inside WEI tokens. Origins can then relay them to the auditor if they believe a particular token comes from a compromised or suspicious client. Upon receipt, an auditor can decrypt the AttestationLabel.attester_label, check that it matches the commitment (AttestationLabel.client_label), and, if so, report the client_label to the attester for debugging.
 
 The auditor can also publish a list of label commitments (AttestationLabel.client_label values) it reports for the sake of transparency. Honest clients can use this to determine if their labels were mistakenly or maliciously reported by origins.
-
-## OPEN ISSUES
-
-- Randomize the attestation label for each WEI token. This requires a randomized commitment during attestation. This could be done by making the commitment (r, H(r, l)) for randomly chosen r, for example.

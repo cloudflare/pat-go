@@ -1,6 +1,7 @@
 package typeFFFF
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"errors"
 
@@ -12,7 +13,7 @@ var (
 )
 
 type AttestationLabel struct {
-	clientLabel   []byte // 32 bytes
+	clientLabel   []byte // 64 bytes
 	attesterLabel []byte // 32 (enc) + 32 (ciphertext) + 16 (AEAD tag) = 80
 	sig           []byte // 256 bytes
 }
@@ -28,8 +29,8 @@ func (l AttestationLabel) Marshal() []byte {
 func UnmarshalAttestationLabel(data []byte) (AttestationLabel, error) {
 	s := cryptobyte.String(data)
 
-	clientLabel := make([]byte, 32)
-	if !s.ReadBytes(&clientLabel, 32) {
+	clientLabel := make([]byte, 64)
+	if !s.ReadBytes(&clientLabel, 64) {
 		return AttestationLabel{}, ErrMalformedLabel
 	}
 
@@ -56,10 +57,13 @@ type AttestationLabelRequest struct {
 }
 
 func CreateAttestationLabelRequest(label []byte) AttestationLabelRequest {
-	commitment := sha256.Sum256(label)
+	randomPrefix := make([]byte, 32)
+	rand.Reader.Read(randomPrefix)
+	digest := sha256.Sum256(append(randomPrefix, label...))
+	commitment := append(randomPrefix, digest[:]...)
 	return AttestationLabelRequest{
-		label:       label,         // client-chosen label
-		clientLabel: commitment[:], // commitment to the label, e.g., H(x)
+		label:       label,      // client-chosen label
+		clientLabel: commitment, // commitment to the label, e.g., H(x)
 	}
 }
 

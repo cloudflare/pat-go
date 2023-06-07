@@ -120,7 +120,8 @@ func (a TestAuditor) Report(token tokens.Token) error {
 	// that's used for the feedback loop, rather than it being chosen by the attester.
 	// If this check fails, it means the attester tried to do something suspicious, so
 	// just abort here. Maybe raise an alarm?
-	expectedCommitment := sha256.Sum256(label)
+	commitmentDigest := sha256.Sum256(append(attestationLabel.clientLabel[0:32], label...))
+	expectedCommitment := append(attestationLabel.clientLabel[0:32], commitmentDigest[:]...)
 	if !bytes.Equal(expectedCommitment[:], attestationLabel.clientLabel) {
 		return fmt.Errorf("attestation label verification failure")
 	}
@@ -137,7 +138,8 @@ type TestAttester struct {
 func (a TestAttester) CreateAttestationLabelResponse(req AttestationLabelRequest, auditorKey hpke.KEMPublicKey) (AttestationLabelResponse, error) {
 	// Check that the client label is a commitment to the label, and if so, encrypt the label under
 	// the auditor's public key
-	expectedCommitment := sha256.Sum256(req.label)
+	commitmentDigest := sha256.Sum256(append(req.clientLabel[0:32], req.label...))
+	expectedCommitment := append(req.clientLabel[0:32], commitmentDigest[:]...)
 	if !bytes.Equal(expectedCommitment[:], req.clientLabel) {
 		return AttestationLabelResponse{}, fmt.Errorf("invalid AttestationLabelRequest")
 	}
