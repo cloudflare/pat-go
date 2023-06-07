@@ -33,6 +33,7 @@ The feedback loop for WEI tokens allows for attesters to learn about suspicious 
 
 ```mermaid
 graph TD;
+    Client-->|Device-specific information|Attester;
     Attester-->|AttestationLabel|Issuer;
     Issuer-->|IntegrityKey|Origin;
     Origin-->|AttestationLabel,IntegrityKey|Auditor;
