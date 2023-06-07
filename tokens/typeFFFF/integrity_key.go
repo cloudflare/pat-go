@@ -23,6 +23,7 @@ type IntegrityKey struct {
 func (k IntegrityKey) Marshal() []byte {
 	b := cryptobyte.NewBuilder(nil)
 	b.AddBytes(k.publicKey)
+	// XXX(caw): this is fixed length, but I'm lazy and just length-prefixed it for now
 	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
 		b.AddBytes(k.attestationLabel)
 	})

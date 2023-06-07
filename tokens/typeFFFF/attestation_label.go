@@ -12,9 +12,9 @@ var (
 )
 
 type AttestationLabel struct {
-	clientLabel   []byte
+	clientLabel   []byte // 32 bytes
 	attesterLabel []byte // 32 (enc) + 32 (ciphertext) + 16 (AEAD tag) = 80
-	sig           []byte
+	sig           []byte // 256 bytes
 }
 
 func (l AttestationLabel) Marshal() []byte {

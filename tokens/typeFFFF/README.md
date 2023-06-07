@@ -39,24 +39,48 @@ graph TD;
     Auditor-->Attester;
 ```
 
-In this arrangement, each party only sees the following information:
+In this arrangement, each party is responsible for the following.
 
-- Attester:
+- Attester: The entity responsible for verifying and safeguarding client-specific device information. It sees:
     - Client-specific device information revealed during the attestation check; and
     - Client-chosen attestation label
-- Issuer:
+- Issuer: The entity responsible for producing client-specific integrity keys that are used for producing WEI Privacy Pass tokens. It sees:
     - Encrypted and signed attestation label (the label encrypted under the auditor's public key)
     - Client-chosen integrity keys
-- Origin:
+- Origin: The entity that consumes and verifies WEI Privacy Pass tokens and, optionally, reports tokens to the auditor in the event of suspicious client behavior. It sees:
     - Encrypted and signed attestation label (the label encrypted under the auditor's public key)
     - Client-chosen integrity key
     - WEI token
-- Auditor:
+- Auditor: The entity responsible for completing the feedback loop between origins and attesters. It sees:
     - Client-chosen attestation label
     - Origin name
 
 Importantly, no single party ever learns client-specific device information and origin-specific information.
 
-## Design Sketch
+## Attestation Label
 
-XXX(caw): writeme
+Fundamentally, a label is an index into a database that the attester uses for looking up client-specific device information. The label is a random 32 byte string that the client controls, thereby making sure it's not maliciously chosen. The purpose of the attestation label structure is to pass this information through the feedback loop in a way that does not compromise any individual user's privacy.
+
+At a high level, the attestation label consists of the following information:
+
+```
+struct {
+    uint8 client_label[32]
+    uint8 attester_label[80]
+    uint8 signature[80]
+} AttestationLabel;
+```
+
+Each of these fields is as described below:
+
+- client_label: A commitment to a client-chosen label (a random byte string) that the attester uses to index into its database of past attestations. The attester will use this to look up device specific information should it need to debug any reported attestation failures from the auditor.
+- attester_label: An encryption of the label under the auditor's public key.
+- signature: A signature over (client_label, attester_label) by the attester's signing key. This is used by the issuer to confirm that the attestation label is valid.
+
+Attestation labels are "minted" by the attester, and then propogated through the feedback loop inside WEI tokens. Origins can then relay them to the auditor if they believe a particular token comes from a compromised or suspicious client. Upon receipt, an auditor can decrypt the AttestationLabel.attester_label, check that it matches the commitment (AttestationLabel.client_label), and, if so, report the client_label to the attester for debugging.
+
+The auditor can also publish a list of label commitments (AttestationLabel.client_label values) it reports for the sake of transparency. Honest clients can use this to determine if their labels were mistakenly or maliciously reported by origins.
+
+## OPEN ISSUES
+
+- Randomize the attestation label for each WEI token. This requires a randomized commitment during attestation. This could be done by making the commitment (r, H(r, l)) for randomly chosen r, for example.
