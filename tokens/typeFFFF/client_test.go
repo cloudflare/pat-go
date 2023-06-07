@@ -117,7 +117,9 @@ func (a TestAuditor) Report(token tokens.Token) error {
 	}
 
 	// This check exists to make sure that the client and attester agree on the label
-	// that's used for the feedback loop, rather than it being chosen by the attester
+	// that's used for the feedback loop, rather than it being chosen by the attester.
+	// If this check fails, it means the attester tried to do something suspicious, so
+	// just abort here. Maybe raise an alarm?
 	expectedCommitment := sha256.Sum256(label)
 	if !bytes.Equal(expectedCommitment[:], attestationLabel.clientLabel) {
 		return fmt.Errorf("attestation label verification failure")
