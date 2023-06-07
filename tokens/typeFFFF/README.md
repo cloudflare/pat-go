@@ -68,7 +68,7 @@ At a high level, the attestation label consists of the following information:
 struct {
     uint8 client_label[32]
     uint8 attester_label[80]
-    uint8 signature[80]
+    uint8 signature[256]
 } AttestationLabel;
 ```
 
