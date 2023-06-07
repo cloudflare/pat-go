@@ -6,9 +6,9 @@ import (
 
 func createRandomAttestationLabel() AttestationLabel {
 	return AttestationLabel{
-		clientLabel:   make([]byte, 64),
-		attesterLabel: make([]byte, 80),
-		sig:           make([]byte, 256),
+		labelCommitment: make([]byte, 64),
+		attesterLabel:   make([]byte, 80),
+		sig:             make([]byte, 256),
 	}
 }
 

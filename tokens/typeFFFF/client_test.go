@@ -117,9 +117,9 @@ func (a TestAuditor) Report(token tokens.Token) error {
 	// that's used for the feedback loop, rather than it being chosen by the attester.
 	// If this check fails, it means the attester tried to do something suspicious, so
 	// just abort here. Maybe raise an alarm?
-	commitmentDigest := sha256.Sum256(append(attestationLabel.clientLabel[0:32], label...))
-	expectedCommitment := append(attestationLabel.clientLabel[0:32], commitmentDigest[:]...)
-	if !bytes.Equal(expectedCommitment[:], attestationLabel.clientLabel) {
+	commitmentDigest := sha256.Sum256(append(attestationLabel.labelCommitment[0:32], label...))
+	expectedCommitment := append(attestationLabel.labelCommitment[0:32], commitmentDigest[:]...)
+	if !bytes.Equal(expectedCommitment[:], attestationLabel.labelCommitment) {
 		return fmt.Errorf("attestation label verification failure")
 	}
 
@@ -135,9 +135,9 @@ type TestAttester struct {
 func (a TestAttester) CreateAttestationLabelResponse(req AttestationLabelRequest, auditorKey hpke.KEMPublicKey) (AttestationLabelResponse, error) {
 	// Check that the client label is a commitment to the label, and if so, encrypt the label under
 	// the auditor's public key
-	commitmentDigest := sha256.Sum256(append(req.clientLabel[0:32], req.label...))
-	expectedCommitment := append(req.clientLabel[0:32], commitmentDigest[:]...)
-	if !bytes.Equal(expectedCommitment[:], req.clientLabel) {
+	commitmentDigest := sha256.Sum256(append(req.labelCommitment[0:32], req.label...))
+	expectedCommitment := append(req.labelCommitment[0:32], commitmentDigest[:]...)
+	if !bytes.Equal(expectedCommitment[:], req.labelCommitment) {
 		return AttestationLabelResponse{}, fmt.Errorf("invalid AttestationLabelRequest")
 	}
 
@@ -154,7 +154,7 @@ func (a TestAttester) CreateAttestationLabelResponse(req AttestationLabelRequest
 	attesterLabel := append(enc, encryptedLabel...)
 
 	b := cryptobyte.NewBuilder(nil)
-	b.AddBytes(req.clientLabel)
+	b.AddBytes(req.labelCommitment)
 	b.AddBytes(attesterLabel)
 	sigInput := b.BytesOrPanic()
 
@@ -186,7 +186,7 @@ type TestIssuer struct {
 func (i TestIssuer) CreateIntegrityKeyResponse(req IntegrityKeyRequest, attesterKey *rsa.PublicKey) (IntegrityKeyResponse, error) {
 	// Verify the attestation label signature
 	b := cryptobyte.NewBuilder(nil)
-	b.AddBytes(req.attestationLabel.clientLabel)
+	b.AddBytes(req.attestationLabel.labelCommitment)
 	b.AddBytes(req.attestationLabel.attesterLabel)
 	sigInput := b.BytesOrPanic()
 	hash := sha512.New384()

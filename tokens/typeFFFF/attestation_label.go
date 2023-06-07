@@ -13,14 +13,14 @@ var (
 )
 
 type AttestationLabel struct {
-	clientLabel   []byte // 64 bytes
-	attesterLabel []byte // 32 (enc) + 32 (ciphertext) + 16 (AEAD tag) = 80
-	sig           []byte // 256 bytes
+	labelCommitment []byte // 64 bytes (r, H(r, l)) for label l
+	attesterLabel   []byte // 32 (enc) + 32 (ciphertext) + 16 (AEAD tag) = 80
+	sig             []byte // 256 bytes
 }
 
 func (l AttestationLabel) Marshal() []byte {
 	b := cryptobyte.NewBuilder(nil)
-	b.AddBytes(l.clientLabel)
+	b.AddBytes(l.labelCommitment)
 	b.AddBytes(l.attesterLabel)
 	b.AddBytes(l.sig)
 	return b.BytesOrPanic()
@@ -45,25 +45,26 @@ func UnmarshalAttestationLabel(data []byte) (AttestationLabel, error) {
 	}
 
 	return AttestationLabel{
-		clientLabel:   clientLabel,
-		attesterLabel: attesterLabel,
-		sig:           signature,
+		labelCommitment: clientLabel,
+		attesterLabel:   attesterLabel,
+		sig:             signature,
 	}, nil
 }
 
 type AttestationLabelRequest struct {
-	label       []byte
-	clientLabel []byte
+	label           []byte
+	labelCommitment []byte
 }
 
 func CreateAttestationLabelRequest(label []byte) AttestationLabelRequest {
+	// Create a random commitment to the client-chosen label
 	randomPrefix := make([]byte, 32)
 	rand.Reader.Read(randomPrefix)
 	digest := sha256.Sum256(append(randomPrefix, label...))
 	commitment := append(randomPrefix, digest[:]...)
 	return AttestationLabelRequest{
-		label:       label,      // client-chosen label
-		clientLabel: commitment, // commitment to the label, e.g., H(x)
+		label:           label,      // client-chosen label
+		labelCommitment: commitment, // commitment to the label, e.g., H(x)
 	}
 }
 
@@ -74,8 +75,8 @@ type AttestationLabelResponse struct {
 
 func (r AttestationLabelRequest) FinalizeAttestationLabel(resp AttestationLabelResponse) AttestationLabel {
 	return AttestationLabel{
-		clientLabel:   r.clientLabel,
-		attesterLabel: resp.attesterLabel,
-		sig:           resp.sig,
+		labelCommitment: r.labelCommitment,
+		attesterLabel:   resp.attesterLabel,
+		sig:             resp.sig,
 	}
 }

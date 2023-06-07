@@ -60,13 +60,15 @@ Importantly, no single party ever learns client-specific device information and 
 
 ## Attestation Label
 
-Fundamentally, a label is an index into a database that the attester uses for looking up client-specific device information. The label is a random 32 byte string that the client controls, thereby making sure it's not maliciously chosen. The purpose of the attestation label structure is to pass this information through the feedback loop in a way that does not compromise any individual user's privacy.
+Fundamentally, a label is an index into a database that the attester uses for looking up client-specific device information. The label is a random 32 byte string that the client controls, thereby making sure it's not maliciously chosen, e.g., as a tracking vector or similar. We refer to this label as the client label.
+
+The purpose of the attestation label structure is to pass this label through the feedback loop in a way that does not compromise any individual user's privacy. In particular, the only parties that learn the client label are (1) the attester and (2) an audit server, and the attester only completes the loop if the audit server process
 
 At a high level, the attestation label consists of the following information:
 
 ```
 struct {
-    uint8 client_label[32]
+    uint8 label_commitment[32]
     uint8 attester_label[80]
     uint8 signature[256]
 } AttestationLabel;
@@ -74,7 +76,7 @@ struct {
 
 Each of these fields is as described below:
 
-- client_label: A commitment to a client-chosen label (a random byte string) that the attester uses to index into its database of past attestations. The attester will use this to look up device specific information should it need to debug any reported attestation failures from the auditor.
+- label_commitment: A commitment to the client label that the attester uses to index into its database of past attestations. The attester will use this to look up device specific information should it need to debug any reported attestation failures from the auditor.
 - attester_label: An encryption of the label under the auditor's public key.
 - signature: A signature over (client_label, attester_label) by the attester's signing key. This is used by the issuer to confirm that the attestation label is valid.
 
