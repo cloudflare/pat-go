@@ -68,15 +68,15 @@ At a high level, the attestation label consists of the following information:
 
 ```
 struct {
-    uint8 label_commitment[32]
-    uint8 attester_label[80]
-    uint8 signature[256]
+    uint8 label_commitment[64];
+    uint8 attester_label[80];
+    uint8 signature[256];
 } AttestationLabel;
 ```
 
 Each of these fields is as described below:
 
-- label_commitment: A commitment to the client label that the attester uses to index into its database of past attestations. The attester will use this to look up device specific information should it need to debug any reported attestation failures from the auditor.
+- label_commitment: A commitment to the client label that the attester uses to index into its database of past attestations. The attester will use this to look up device specific information should it need to debug any reported attestation failures from the auditor. The commitment is (r, H(r, l)) for client label l and 32-byte string r.
 - attester_label: An encryption of the label under the auditor's public key.
 - signature: A signature over (label_commitment, attester_label) by the attester's signing key. This is used by the issuer to confirm that the attestation label is valid.
 
