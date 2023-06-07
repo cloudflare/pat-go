@@ -14,17 +14,17 @@ var (
 )
 
 type IntegrityKey struct {
-	privateKey     ed25519.PrivateKey
-	publicKey      ed25519.PublicKey
-	encryptedLabel []byte
-	signature      []byte
+	privateKey       ed25519.PrivateKey
+	publicKey        ed25519.PublicKey
+	attestationLabel []byte
+	signature        []byte
 }
 
 func (k IntegrityKey) Marshal() []byte {
 	b := cryptobyte.NewBuilder(nil)
 	b.AddBytes(k.publicKey)
 	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-		b.AddBytes(k.encryptedLabel)
+		b.AddBytes(k.attestationLabel)
 	})
 	b.AddBytes(k.signature)
 	return b.BytesOrPanic()
@@ -49,9 +49,9 @@ func UnmarshalIntegrityKey(data []byte) (IntegrityKey, error) {
 	}
 
 	return IntegrityKey{
-		publicKey:      publicKeyBytes,
-		encryptedLabel: encryptedLabel,
-		signature:      signature,
+		publicKey:        publicKeyBytes,
+		attestationLabel: encryptedLabel,
+		signature:        signature,
 	}, nil
 }
 
@@ -59,15 +59,15 @@ func (k IntegrityKey) AuthenticatorInput() []byte {
 	b := cryptobyte.NewBuilder(nil)
 	b.AddBytes(k.publicKey)
 	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-		b.AddBytes([]byte(k.encryptedLabel))
+		b.AddBytes([]byte(k.attestationLabel))
 	})
 	return b.BytesOrPanic()
 }
 
 type IntegrityKeyRequest struct {
-	privateKey     ed25519.PrivateKey
-	publicKey      ed25519.PublicKey
-	encryptedLabel []byte
+	privateKey       ed25519.PrivateKey
+	publicKey        ed25519.PublicKey
+	attestationLabel []byte
 }
 
 func CreateIntegrityKeyRequest(encryptedLabel []byte) (IntegrityKeyRequest, error) {
@@ -76,9 +76,9 @@ func CreateIntegrityKeyRequest(encryptedLabel []byte) (IntegrityKeyRequest, erro
 		return IntegrityKeyRequest{}, err
 	}
 	return IntegrityKeyRequest{
-		privateKey:     privateKey,
-		publicKey:      publicKey,
-		encryptedLabel: encryptedLabel,
+		privateKey:       privateKey,
+		publicKey:        publicKey,
+		attestationLabel: encryptedLabel,
 	}, nil
 }
 
@@ -86,7 +86,7 @@ func (k IntegrityKeyRequest) AuthenticatorInput() []byte {
 	b := cryptobyte.NewBuilder(nil)
 	b.AddBytes(k.publicKey)
 	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-		b.AddBytes([]byte(k.encryptedLabel))
+		b.AddBytes([]byte(k.attestationLabel))
 	})
 	return b.BytesOrPanic()
 }
@@ -97,9 +97,9 @@ type IntegrityKeyResponse struct {
 
 func (k IntegrityKeyRequest) FinalizeIntegrityKey(resp IntegrityKeyResponse) IntegrityKey {
 	return IntegrityKey{
-		privateKey:     k.privateKey,
-		publicKey:      k.publicKey,
-		encryptedLabel: k.encryptedLabel,
-		signature:      resp.signature,
+		privateKey:       k.privateKey,
+		publicKey:        k.publicKey,
+		attestationLabel: k.attestationLabel,
+		signature:        resp.signature,
 	}
 }

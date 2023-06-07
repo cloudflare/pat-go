@@ -12,10 +12,10 @@ func createRandomIntegrityKey() IntegrityKey {
 		panic(err)
 	}
 	return IntegrityKey{
-		publicKey:      pub,
-		privateKey:     priv,
-		encryptedLabel: []byte("testing"),
-		signature:      make([]byte, 256),
+		publicKey:        pub,
+		privateKey:       priv,
+		attestationLabel: []byte("testing"),
+		signature:        make([]byte, 256),
 	}
 }
 

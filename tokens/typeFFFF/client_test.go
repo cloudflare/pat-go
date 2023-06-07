@@ -1,13 +1,26 @@
 package typeFFFF
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"testing"
+
+	"github.com/cisco/go-hpke"
+	"github.com/cloudflare/pat-go/tokens"
+	"golang.org/x/crypto/cryptobyte"
+)
+
+var (
+	fixedKEM  = hpke.DHKEM_X25519
+	fixedKDF  = hpke.KDF_HKDF_SHA256
+	fixedAEAD = hpke.AEAD_AESGCM128
 )
 
 // 2048-bit RSA private key
@@ -54,17 +67,154 @@ func loadPrivateKey(t *testing.T) *rsa.PrivateKey {
 	return privateKey
 }
 
-type TestIssuer struct {
+type TestAuditor struct {
+	suite      hpke.CipherSuite
+	privateKey hpke.KEMPrivateKey
+	publicKey  hpke.KEMPublicKey
+}
+
+func NewTestAuditor() TestAuditor {
+	suite, err := hpke.AssembleCipherSuite(fixedKEM, fixedKDF, fixedAEAD)
+	if err != nil {
+		panic(err)
+	}
+	ikm := make([]byte, 32)
+	rand.Reader.Read(ikm)
+	skA, pkA, err := suite.KEM.DeriveKeyPair(ikm)
+	if err != nil {
+		panic(err)
+	}
+
+	return TestAuditor{
+		suite:      suite,
+		privateKey: skA,
+		publicKey:  pkA,
+	}
+}
+
+func (a TestAuditor) Report(token tokens.Token) error {
+	// XXX(caw): verify the issuer signature?
+
+	integrityKey, err := UnmarshalIntegrityKey(token.KeyID)
+	if err != nil {
+		return err
+	}
+	attestationLabel, err := UnmarshalAttestationLabel(integrityKey.attestationLabel)
+	if err != nil {
+		return err
+	}
+	enc := attestationLabel.attesterLabel[0:32]
+
+	// Attempt to decrypt the attester label
+	context, err := hpke.SetupBaseR(a.suite, a.privateKey, enc, []byte("TODO"))
+	if err != nil {
+		return err
+	}
+
+	label, err := context.Open(nil, attestationLabel.attesterLabel[32:])
+	if err != nil {
+		return err
+	}
+
+	// This check exists to make sure that the client and attester agree on the label
+	// that's used for the feedback loop, rather than it being chosen by the attester
+	expectedCommitment := sha256.Sum256(label)
+	if !bytes.Equal(expectedCommitment[:], attestationLabel.clientLabel) {
+		return fmt.Errorf("attestation label verification failure")
+	}
+
+	// XXX(caw): report the label to the attester for debugging purposes
+
+	return nil
+}
+
+type TestAttester struct {
 	signingKey *rsa.PrivateKey
 }
 
-func (i TestIssuer) CreateIntegrityTokenResponse(req IntegrityKeyRequest) IntegrityKeyResponse {
+func (a TestAttester) CreateAttestationLabelResponse(req AttestationLabelRequest, auditorKey hpke.KEMPublicKey) (AttestationLabelResponse, error) {
+	// Check that the client label is a commitment to the label, and if so, encrypt the label under
+	// the auditor's public key
+	expectedCommitment := sha256.Sum256(req.label)
+	if !bytes.Equal(expectedCommitment[:], req.clientLabel) {
+		return AttestationLabelResponse{}, fmt.Errorf("invalid AttestationLabelRequest")
+	}
+
+	// Construct the encrypted label (attester label)
+	suite, err := hpke.AssembleCipherSuite(fixedKEM, fixedKDF, fixedAEAD)
+	if err != nil {
+		return AttestationLabelResponse{}, err
+	}
+	enc, context, err := hpke.SetupBaseS(suite, rand.Reader, auditorKey, []byte("TODO"))
+	if err != nil {
+		return AttestationLabelResponse{}, err
+	}
+	encryptedLabel := context.Seal(nil, req.label)
+	attesterLabel := append(enc, encryptedLabel...)
+
+	b := cryptobyte.NewBuilder(nil)
+	b.AddBytes(req.clientLabel)
+	b.AddBytes(attesterLabel)
+	sigInput := b.BytesOrPanic()
+
 	hash := sha512.New384()
-	_, err := hash.Write(req.AuthenticatorInput())
+	_, err = hash.Write(sigInput)
 	if err != nil {
 		panic(err)
 	}
 	digest := hash.Sum(nil)
+
+	signature, err := rsa.SignPSS(rand.Reader, a.signingKey, crypto.SHA384, digest[:], &rsa.PSSOptions{
+		Hash:       crypto.SHA384,
+		SaltLength: crypto.SHA384.Size(),
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	return AttestationLabelResponse{
+		attesterLabel: attesterLabel,
+		sig:           signature,
+	}, nil
+}
+
+type TestIssuer struct {
+	signingKey *rsa.PrivateKey
+}
+
+func (i TestIssuer) CreateIntegrityKeyResponse(req IntegrityKeyRequest, attesterKey *rsa.PublicKey) (IntegrityKeyResponse, error) {
+	attestationLabel, err := UnmarshalAttestationLabel(req.attestationLabel)
+	if err != nil {
+		return IntegrityKeyResponse{}, err
+	}
+
+	// Verify the attestation label signature
+	b := cryptobyte.NewBuilder(nil)
+	b.AddBytes(attestationLabel.clientLabel)
+	b.AddBytes(attestationLabel.attesterLabel)
+	sigInput := b.BytesOrPanic()
+	hash := sha512.New384()
+	_, err = hash.Write(sigInput)
+	if err != nil {
+		return IntegrityKeyResponse{}, err
+	}
+	digest := hash.Sum(nil)
+
+	err = rsa.VerifyPSS(attesterKey, crypto.SHA384, digest, attestationLabel.sig, &rsa.PSSOptions{
+		Hash:       crypto.SHA384,
+		SaltLength: crypto.SHA384.Size(),
+	})
+	if err != nil {
+		return IntegrityKeyResponse{}, err
+	}
+
+	// If the attestation label is valid, sign the integrity key data and produce a response
+	hash = sha512.New384()
+	_, err = hash.Write(req.AuthenticatorInput())
+	if err != nil {
+		panic(err)
+	}
+	digest = hash.Sum(nil)
 
 	signature, err := rsa.SignPSS(rand.Reader, i.signingKey, crypto.SHA384, digest[:], &rsa.PSSOptions{
 		Hash:       crypto.SHA384,
@@ -76,28 +226,48 @@ func (i TestIssuer) CreateIntegrityTokenResponse(req IntegrityKeyRequest) Integr
 
 	return IntegrityKeyResponse{
 		signature: signature,
-	}
+	}, nil
 }
 
 func TestClient(t *testing.T) {
 	store := EmptyKeyStore()
+
+	// Create the auditor
+	auditor := NewTestAuditor()
+
+	// Create a test attester
+	attester := TestAttester{
+		signingKey: loadPrivateKey(t),
+	}
+
+	// Run the attestation process
+	label := make([]byte, 32)
+	rand.Reader.Read(label)
+	labelReq := CreateAttestationLabelRequest(label)
+	labelResp, err := attester.CreateAttestationLabelResponse(labelReq, auditor.publicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attestationLabel := labelReq.FinalizeAttestationLabel(labelResp)
 
 	// Create a test issuer
 	issuer := TestIssuer{
 		signingKey: loadPrivateKey(t),
 	}
 
-	// Create some integrity key requests. Clients would encrypt an attester-provided label
-	// that the issuer validates and then signs together with a client-chosen integrity key.
-	// OPEN QUESTION: does the issuer need assurance that the encrypted label is an encryption of something produced by the attester?
-	encryptedLabel := []byte("this is an encrypted label for the attester")
-	integrityKeyRequest, err := CreateIntegrityKeyRequest(encryptedLabel)
+	// Create some integrity key requests using the client's attestation label.
+	// Clients would encrypt an attester-provided label that the issuer validates
+	// and then signs together with a client-chosen integrity key.
+	integrityKeyRequest, err := CreateIntegrityKeyRequest(attestationLabel.Marshal())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Process and produce an integrity key
-	integrityKeyResponse := issuer.CreateIntegrityTokenResponse(integrityKeyRequest)
+	integrityKeyResponse, err := issuer.CreateIntegrityKeyResponse(integrityKeyRequest, &attester.signingKey.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 	integrityKey := integrityKeyRequest.FinalizeIntegrityKey(integrityKeyResponse)
 	store.AddIntegrityKey(integrityKey)
 
@@ -118,6 +288,12 @@ func TestClient(t *testing.T) {
 
 	// Verify the token against the expected issuer public key
 	err = client.VerifyToken(token, &issuer.signingKey.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Report the token to the auditor
+	err = auditor.Report(token)
 	if err != nil {
 		t.Fatal(err)
 	}
