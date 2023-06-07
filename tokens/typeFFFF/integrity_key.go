@@ -16,7 +16,7 @@ var (
 type IntegrityKey struct {
 	privateKey       ed25519.PrivateKey
 	publicKey        ed25519.PublicKey
-	attestationLabel []byte
+	attestationLabel AttestationLabel
 	signature        []byte
 }
 
@@ -25,7 +25,7 @@ func (k IntegrityKey) Marshal() []byte {
 	b.AddBytes(k.publicKey)
 	// XXX(caw): this is fixed length, but I'm lazy and just length-prefixed it for now
 	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-		b.AddBytes(k.attestationLabel)
+		b.AddBytes(k.attestationLabel.Marshal())
 	})
 	b.AddBytes(k.signature)
 	return b.BytesOrPanic()
@@ -39,9 +39,14 @@ func UnmarshalIntegrityKey(data []byte) (IntegrityKey, error) {
 		return IntegrityKey{}, ErrMalformedToken
 	}
 
-	var encryptedLabel cryptobyte.String
-	if !s.ReadUint16LengthPrefixed(&encryptedLabel) {
+	var attestationLabelEnc cryptobyte.String
+	if !s.ReadUint16LengthPrefixed(&attestationLabelEnc) {
 		return IntegrityKey{}, ErrMalformedToken
+	}
+
+	attestationLabel, err := UnmarshalAttestationLabel(attestationLabelEnc)
+	if err != nil {
+		return IntegrityKey{}, err
 	}
 
 	signature := make([]byte, 256)
@@ -51,7 +56,7 @@ func UnmarshalIntegrityKey(data []byte) (IntegrityKey, error) {
 
 	return IntegrityKey{
 		publicKey:        publicKeyBytes,
-		attestationLabel: encryptedLabel,
+		attestationLabel: attestationLabel,
 		signature:        signature,
 	}, nil
 }
@@ -60,7 +65,7 @@ func (k IntegrityKey) AuthenticatorInput() []byte {
 	b := cryptobyte.NewBuilder(nil)
 	b.AddBytes(k.publicKey)
 	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-		b.AddBytes([]byte(k.attestationLabel))
+		b.AddBytes([]byte(k.attestationLabel.Marshal()))
 	})
 	return b.BytesOrPanic()
 }
@@ -68,10 +73,10 @@ func (k IntegrityKey) AuthenticatorInput() []byte {
 type IntegrityKeyRequest struct {
 	privateKey       ed25519.PrivateKey
 	publicKey        ed25519.PublicKey
-	attestationLabel []byte
+	attestationLabel AttestationLabel
 }
 
-func CreateIntegrityKeyRequest(encryptedLabel []byte) (IntegrityKeyRequest, error) {
+func CreateIntegrityKeyRequest(attestationLabel AttestationLabel) (IntegrityKeyRequest, error) {
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		return IntegrityKeyRequest{}, err
@@ -79,7 +84,7 @@ func CreateIntegrityKeyRequest(encryptedLabel []byte) (IntegrityKeyRequest, erro
 	return IntegrityKeyRequest{
 		privateKey:       privateKey,
 		publicKey:        publicKey,
-		attestationLabel: encryptedLabel,
+		attestationLabel: attestationLabel,
 	}, nil
 }
 
@@ -87,7 +92,7 @@ func (k IntegrityKeyRequest) AuthenticatorInput() []byte {
 	b := cryptobyte.NewBuilder(nil)
 	b.AddBytes(k.publicKey)
 	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-		b.AddBytes([]byte(k.attestationLabel))
+		b.AddBytes([]byte(k.attestationLabel.Marshal()))
 	})
 	return b.BytesOrPanic()
 }

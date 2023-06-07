@@ -14,7 +14,7 @@ func createRandomIntegrityKey() IntegrityKey {
 	return IntegrityKey{
 		publicKey:        pub,
 		privateKey:       priv,
-		attestationLabel: []byte("testing"),
+		attestationLabel: createRandomAttestationLabel(),
 		signature:        make([]byte, 256),
 	}
 }

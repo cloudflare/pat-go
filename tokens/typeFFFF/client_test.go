@@ -99,10 +99,7 @@ func (a TestAuditor) Report(token tokens.Token) error {
 	if err != nil {
 		return err
 	}
-	attestationLabel, err := UnmarshalAttestationLabel(integrityKey.attestationLabel)
-	if err != nil {
-		return err
-	}
+	attestationLabel := integrityKey.attestationLabel
 	enc := attestationLabel.attesterLabel[0:32]
 
 	// Attempt to decrypt the attester label
@@ -187,24 +184,19 @@ type TestIssuer struct {
 }
 
 func (i TestIssuer) CreateIntegrityKeyResponse(req IntegrityKeyRequest, attesterKey *rsa.PublicKey) (IntegrityKeyResponse, error) {
-	attestationLabel, err := UnmarshalAttestationLabel(req.attestationLabel)
-	if err != nil {
-		return IntegrityKeyResponse{}, err
-	}
-
 	// Verify the attestation label signature
 	b := cryptobyte.NewBuilder(nil)
-	b.AddBytes(attestationLabel.clientLabel)
-	b.AddBytes(attestationLabel.attesterLabel)
+	b.AddBytes(req.attestationLabel.clientLabel)
+	b.AddBytes(req.attestationLabel.attesterLabel)
 	sigInput := b.BytesOrPanic()
 	hash := sha512.New384()
-	_, err = hash.Write(sigInput)
+	_, err := hash.Write(sigInput)
 	if err != nil {
 		return IntegrityKeyResponse{}, err
 	}
 	digest := hash.Sum(nil)
 
-	err = rsa.VerifyPSS(attesterKey, crypto.SHA384, digest, attestationLabel.sig, &rsa.PSSOptions{
+	err = rsa.VerifyPSS(attesterKey, crypto.SHA384, digest, req.attestationLabel.sig, &rsa.PSSOptions{
 		Hash:       crypto.SHA384,
 		SaltLength: crypto.SHA384.Size(),
 	})
@@ -262,7 +254,7 @@ func TestClient(t *testing.T) {
 	// Create some integrity key requests using the client's attestation label.
 	// Clients would encrypt an attester-provided label that the issuer validates
 	// and then signs together with a client-chosen integrity key.
-	integrityKeyRequest, err := CreateIntegrityKeyRequest(attestationLabel.Marshal())
+	integrityKeyRequest, err := CreateIntegrityKeyRequest(attestationLabel)
 	if err != nil {
 		t.Fatal(err)
 	}
