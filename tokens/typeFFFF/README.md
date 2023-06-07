@@ -78,8 +78,8 @@ Each of these fields is as described below:
 
 - label_commitment: A commitment to the client label that the attester uses to index into its database of past attestations. The attester will use this to look up device specific information should it need to debug any reported attestation failures from the auditor.
 - attester_label: An encryption of the label under the auditor's public key.
-- signature: A signature over (client_label, attester_label) by the attester's signing key. This is used by the issuer to confirm that the attestation label is valid.
+- signature: A signature over (label_commitment, attester_label) by the attester's signing key. This is used by the issuer to confirm that the attestation label is valid.
 
-Attestation labels are "minted" by the attester, and then propogated through the feedback loop inside WEI tokens. Origins can then relay them to the auditor if they believe a particular token comes from a compromised or suspicious client. Upon receipt, an auditor can decrypt the AttestationLabel.attester_label, check that it matches the commitment (AttestationLabel.client_label), and, if so, report the client_label to the attester for debugging.
+Attestation labels are "minted" by the attester, and then propogated through the feedback loop inside WEI tokens. Origins can then relay them to the auditor if they believe a particular token comes from a compromised or suspicious client. Upon receipt, an auditor can decrypt the AttestationLabel.attester_label, check that it matches the commitment (AttestationLabel.label_commitment), and, if so, report the label_commitment to the attester for debugging.
 
-The auditor can also publish a list of label commitments (AttestationLabel.client_label values) it reports for the sake of transparency. Honest clients can use this to determine if their labels were mistakenly or maliciously reported by origins.
+The auditor can also publish a list of label commitments (AttestationLabel.label_commitment values) it reports for the sake of transparency. Honest clients can use this to determine if their labels were mistakenly or maliciously reported by origins.
