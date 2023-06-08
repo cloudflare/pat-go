@@ -44,16 +44,16 @@ In this arrangement, each party is responsible for the following.
 
 - Attester: The entity responsible for verifying and safeguarding client-specific device information. It sees:
     - Client-specific device information revealed during the attestation check; and
-    - Client-chosen attestation label
+    - Client-chosen label
 - Issuer: The entity responsible for producing client-specific integrity keys that are used for producing WEI Privacy Pass tokens. It sees:
-    - Encrypted and signed attestation label (the label encrypted under the auditor's public key)
+    - Signed attestation label
     - Client-chosen integrity keys
 - Origin: The entity that consumes and verifies WEI Privacy Pass tokens and, optionally, reports tokens to the auditor in the event of suspicious client behavior. It sees:
-    - Encrypted and signed attestation label (the label encrypted under the auditor's public key)
+    - Signed attestation label
     - Client-chosen integrity key
     - WEI token
 - Auditor: The entity responsible for completing the feedback loop between origins and attesters. It sees:
-    - Client-chosen attestation label
+    - Signed attestation label
     - Origin name
 
 Importantly, no single party ever learns client-specific device information and origin-specific information.
