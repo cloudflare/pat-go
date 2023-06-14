@@ -108,25 +108,6 @@ func TestTypeDA7AIssuanceRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-
-	// b := cryptobyte.NewBuilder(nil)
-	// b.AddUint16(BasicPublicTokenType)
-	// b.AddBytes(nonce)
-	// context := sha256.Sum256(challenge)
-	// b.AddBytes(context[:])
-	// b.AddBytes(tokenKeyID)
-	// tokenInput := b.BytesOrPanic()
-
-	// hash := sha512.New384()
-	// hash.Write(tokenInput)
-	// digest := hash.Sum(nil)
-	// err = rsa.VerifyPSS(tokenPublicKey, crypto.SHA384, digest, token.Authenticator, &rsa.PSSOptions{
-	// 	Hash:       crypto.SHA384,
-	// 	SaltLength: crypto.SHA384.Size(),
-	// })
-	// if err != nil {
-	// 	t.Error(err)
-	// }
 }
 
 // // /////
