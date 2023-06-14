@@ -198,7 +198,7 @@ func (i RateLimitedIssuer) Evaluate(encodedRequest []byte) ([]byte, []byte, erro
 	blindedRequestKeyEnc := elliptic.MarshalCompressed(i.curve, blindedRequestKey.X, blindedRequestKey.Y)
 
 	// Compute the blinded signature
-	signer := blindrsa.NewRSASigner(i.tokenKey)
+	signer := blindrsa.NewBRSASigner(i.tokenKey)
 	blindSignature, err := signer.BlindSign(originTokenRequest.blindedMsg)
 	if err != nil {
 		return nil, nil, err

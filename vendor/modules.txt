@@ -1,7 +1,7 @@
 # git.schwanenlied.me/yawning/x448.git v0.0.0-20170617130356-01b048fb03d6
 ## explicit
 git.schwanenlied.me/yawning/x448.git
-# github.com/bwesterb/go-ristretto v1.2.2
+# github.com/bwesterb/go-ristretto v1.2.3
 ## explicit; go 1.13
 github.com/bwesterb/go-ristretto
 github.com/bwesterb/go-ristretto/edwards25519
@@ -11,9 +11,8 @@ github.com/cisco/go-hpke
 # github.com/cisco/go-tls-syntax v0.0.0-20200617162716-46b0cfb76b9b
 ## explicit; go 1.14
 github.com/cisco/go-tls-syntax
-# github.com/cloudflare/circl v1.3.2
-## explicit; go 1.17
-github.com/cloudflare/circl/blindsign
+# github.com/cloudflare/circl v1.3.3 => github.com/chris-wood/circl v1.3.5-0.20230614111335-8d0cc8cfe415
+## explicit; go 1.19
 github.com/cloudflare/circl/blindsign/blindrsa
 github.com/cloudflare/circl/dh/sidh
 github.com/cloudflare/circl/dh/sidh/internal/common
@@ -27,9 +26,11 @@ github.com/cloudflare/circl/internal/conv
 github.com/cloudflare/circl/internal/sha3
 github.com/cloudflare/circl/math
 github.com/cloudflare/circl/oprf
+github.com/cloudflare/circl/simd/keccakf1600
 github.com/cloudflare/circl/xof
+github.com/cloudflare/circl/xof/k12
 github.com/cloudflare/circl/zk/dleq
-# golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa
+# golang.org/x/crypto v0.3.1-0.20221117191849-2c476679df9a
 ## explicit; go 1.17
 golang.org/x/crypto/blake2b
 golang.org/x/crypto/blake2s
@@ -40,8 +41,8 @@ golang.org/x/crypto/cryptobyte/asn1
 golang.org/x/crypto/curve25519
 golang.org/x/crypto/curve25519/internal/field
 golang.org/x/crypto/hkdf
+golang.org/x/crypto/internal/alias
 golang.org/x/crypto/internal/poly1305
-golang.org/x/crypto/internal/subtle
-# golang.org/x/sys v0.0.0-20220811171246-fbc7d0a398ab
+# golang.org/x/sys v0.3.0
 ## explicit; go 1.17
 golang.org/x/sys/cpu

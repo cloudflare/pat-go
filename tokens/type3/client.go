@@ -9,7 +9,6 @@ import (
 	"crypto/sha512"
 
 	hpke "github.com/cisco/go-hpke"
-	"github.com/cloudflare/circl/blindsign"
 	"github.com/cloudflare/circl/blindsign/blindrsa"
 	"github.com/cloudflare/pat-go/ecdsa"
 	"github.com/cloudflare/pat-go/tokens"
@@ -99,7 +98,7 @@ type RateLimitedTokenRequestState struct {
 	encapEnc          []byte
 	nameKey           EncapKey
 	verificationKey   *rsa.PublicKey
-	verifier          blindsign.VerifierState
+	verifier          blindrsa.BRSAVerifierState
 }
 
 func (s RateLimitedTokenRequestState) Request() *RateLimitedTokenRequest {
@@ -191,7 +190,7 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 	}
 	blindedPublicKeyEnc := elliptic.MarshalCompressed(c.curve, blindedPublicKey.X, blindedPublicKey.Y)
 
-	verifier := blindrsa.NewRSAVerifier(tokenKey, crypto.SHA384)
+	verifier := blindrsa.NewBRSAVerifier(tokenKey, crypto.SHA384)
 
 	context := sha256.Sum256(challenge)
 	token := tokens.Token{
