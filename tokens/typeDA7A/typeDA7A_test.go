@@ -118,6 +118,7 @@ func TestType1337IssuanceRoundTrip(t *testing.T) {
 
 	client := Client{}
 
+	// Create extensions that are cryptographically bound to the issued TokenSigningKey
 	extension1 := createTestExtension(1)
 	extension2 := createTestExtension(2)
 	extensions := Extensions{
@@ -128,7 +129,11 @@ func TestType1337IssuanceRoundTrip(t *testing.T) {
 	tokenKeyID := issuer.TokenKeyID()
 	tokenPublicKey := issuer.TokenKey()
 
+	// Create a TokenSigningKey -- this key material is stored locally on the client,
+	// and only the public key ever leaves the client.
 	clientTokenSigningKey := NewTokenSigningKey()
+
+	// Run the issuance protocol to obtain a SignedTokenVerifyingKey
 	tokenKeyRequestState, err := client.CreateTokenKeyRequest(clientTokenSigningKey, encodedExtensions, tokenKeyID, tokenPublicKey)
 	if err != nil {
 		t.Error(err)
@@ -144,18 +149,21 @@ func TestType1337IssuanceRoundTrip(t *testing.T) {
 		t.Error(err)
 	}
 
+	// Create a token challenge (this would be generated from the origin)
 	tokenChallenge := createTokenChallenge(ExperimentalTokenType, nil, "issuer.example", []string{"origin.example"})
 	challenge := tokenChallenge.Marshal()
 
+	// Generate the client nonce
 	nonce := make([]byte, 32)
 	rand.Reader.Read(nonce)
 
+	// Locally issue a token on the client using its SignedTokenVerifyingKey that is bound to the TokenChallenge
 	token, err := signedTokenSigningKey.IssueToken(challenge, nonce, signedTokenSigningKey.Marshal())
 	if err != nil {
 		t.Error(err)
 	}
 
-	// Verification involves two steps:
+	// Verification of the resulting token involves two steps (two signature checks):
 	// 1. Verifying the token signing key is valid against the issuer public key
 	verifier := blindrsa.NewRandomizedPBRSAVerifier(tokenPublicKey, crypto.SHA384)
 	err = verifier.Verify(signedTokenSigningKey.SignedKeyInput(), encodedExtensions, signedTokenSigningKey.signature)
