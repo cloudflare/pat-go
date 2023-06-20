@@ -2,9 +2,11 @@ package typeDA7A
 
 import (
 	"crypto"
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/hex"
+	"log"
 	"math/big"
 	"testing"
 
@@ -110,267 +112,63 @@ func TestTypeDA7AIssuanceRoundTrip(t *testing.T) {
 	}
 }
 
-// // /////
-// // Basic issuance test vector
-// type rawBasicIssuanceTestVector struct {
-// 	PrivateKey    string `json:"skS"`
-// 	PublicKey     string `json:"pkS"`
-// 	Challenge     string `json:"token_challenge"`
-// 	Nonce         string `json:"nonce"`
-// 	Blind         string `json:"blind"`
-// 	Salt          string `json:"salt"`
-// 	TokenRequest  string `json:"token_request"`
-// 	TokenResponse string `json:"token_response"`
-// 	Token         string `json:"token"`
-// }
+func TestType1337IssuanceRoundTrip(t *testing.T) {
+	tokenKey := loadPrivateKey(t)
+	issuer := NewIssuer(tokenKey)
 
-// type basicIssuanceTestVector struct {
-// 	t             *testing.T
-// 	skS           *rsa.PrivateKey
-// 	challenge     []byte
-// 	nonce         []byte
-// 	blind         []byte
-// 	salt          []byte
-// 	tokenRequest  []byte
-// 	tokenResponse []byte
-// 	token         []byte
-// }
+	client := Client{}
 
-// type basicIssuanceTestVectorArray struct {
-// 	t       *testing.T
-// 	vectors []basicIssuanceTestVector
-// }
+	extension1 := createTestExtension(1)
+	extension2 := createTestExtension(2)
+	extensions := Extensions{
+		extensions: []Extension{extension1, extension2},
+	}
+	encodedExtensions := extensions.Marshal()
 
-// func (tva basicIssuanceTestVectorArray) MarshalJSON() ([]byte, error) {
-// 	return json.Marshal(tva.vectors)
-// }
+	tokenKeyID := issuer.TokenKeyID()
+	tokenPublicKey := issuer.TokenKey()
 
-// func (tva *basicIssuanceTestVectorArray) UnmarshalJSON(data []byte) error {
-// 	err := json.Unmarshal(data, &tva.vectors)
-// 	if err != nil {
-// 		return err
-// 	}
+	clientTokenSigningKey := NewTokenSigningKey()
+	tokenKeyRequestState, err := client.CreateTokenKeyRequest(clientTokenSigningKey, encodedExtensions, tokenKeyID, tokenPublicKey)
+	if err != nil {
+		t.Error(err)
+	}
 
-// 	for i := range tva.vectors {
-// 		tva.vectors[i].t = tva.t
-// 	}
-// 	return nil
-// }
+	blindedSignature, err := issuer.Evaluate(tokenKeyRequestState.Request(), encodedExtensions)
+	if err != nil {
+		t.Error(err)
+	}
 
-// func (etv basicIssuanceTestVector) MarshalJSON() ([]byte, error) {
-// 	return json.Marshal(rawBasicIssuanceTestVector{
-// 		PrivateKey:    util.MustHex(util.MustMarshalPrivateKey(etv.skS)),
-// 		PublicKey:     util.MustHex(util.MustMarshalPublicKey(&etv.skS.PublicKey)),
-// 		Challenge:     util.MustHex(etv.challenge),
-// 		Nonce:         util.MustHex(etv.nonce),
-// 		Blind:         util.MustHex(etv.blind),
-// 		Salt:          util.MustHex(etv.salt),
-// 		TokenRequest:  util.MustHex(etv.tokenRequest),
-// 		TokenResponse: util.MustHex(etv.tokenResponse),
-// 		Token:         util.MustHex(etv.token),
-// 	})
-// }
+	signedTokenSigningKey, err := tokenKeyRequestState.FinalizeTokenKey(blindedSignature)
+	if err != nil {
+		t.Error(err)
+	}
 
-// func (etv *basicIssuanceTestVector) UnmarshalJSON(data []byte) error {
-// 	raw := rawBasicIssuanceTestVector{}
-// 	err := json.Unmarshal(data, &raw)
-// 	if err != nil {
-// 		return err
-// 	}
+	tokenChallenge := createTokenChallenge(ExperimentalTokenType, nil, "issuer.example", []string{"origin.example"})
+	challenge := tokenChallenge.Marshal()
 
-// 	etv.skS = util.MustUnmarshalPrivateKey(util.MustUnhex(nil, raw.PrivateKey))
-// 	pkS := util.MustUnmarshalPublicKey(util.MustUnhex(nil, raw.PublicKey))
-// 	if !pkS.Equal(&etv.skS.PublicKey) {
-// 		return fmt.Errorf("Mismatched public keys")
-// 	}
+	nonce := make([]byte, 32)
+	rand.Reader.Read(nonce)
 
-// 	etv.challenge = util.MustUnhex(nil, raw.Challenge)
-// 	etv.nonce = util.MustUnhex(nil, raw.Nonce)
-// 	etv.blind = util.MustUnhex(nil, raw.Blind)
-// 	etv.salt = util.MustUnhex(nil, raw.Salt)
-// 	etv.tokenRequest = util.MustUnhex(nil, raw.TokenRequest)
-// 	etv.tokenResponse = util.MustUnhex(nil, raw.TokenResponse)
-// 	etv.token = util.MustUnhex(nil, raw.Token)
+	token, err := signedTokenSigningKey.IssueToken(challenge, nonce, signedTokenSigningKey.Marshal())
+	if err != nil {
+		t.Error(err)
+	}
 
-// 	return nil
-// }
+	// Verification involves two steps:
+	// 1. Verifying the token signing key is valid against the issuer public key
+	verifier := blindrsa.NewRandomizedPBRSAVerifier(tokenPublicKey, crypto.SHA384)
+	err = verifier.Verify(signedTokenSigningKey.SignedKeyInput(), encodedExtensions, signedTokenSigningKey.signature)
+	if err != nil {
+		t.Error(err)
+	}
 
-// func generateBasicIssuanceTestVector(t *testing.T, client *BasicPublicClient, issuer *BasicPublicIssuer, tokenChallenge tokens.TokenChallenge) basicIssuanceTestVector {
-// 	challenge := tokenChallenge.Marshal()
-
-// 	nonce := make([]byte, 32)
-// 	rand.Reader.Read(nonce)
-
-// 	tokenKeyID := issuer.TokenKeyID()
-// 	tokenPublicKey := issuer.TokenKey()
-
-// 	requestState, err := client.CreateTokenRequest(challenge, nonce, tokenKeyID, tokenPublicKey)
-// 	if err != nil {
-// 		t.Error(err)
-// 	}
-
-// 	blindedSignature, err := issuer.Evaluate(requestState.Request())
-// 	if err != nil {
-// 		t.Error(err)
-// 	}
-
-// 	token, err := requestState.FinalizeToken(blindedSignature)
-// 	if err != nil {
-// 		t.Error(err)
-// 	}
-
-// 	return basicIssuanceTestVector{
-// 		t:             t,
-// 		skS:           issuer.tokenKey,
-// 		challenge:     challenge,
-// 		nonce:         nonce,
-// 		blind:         requestState.verifier.CopyBlind(),
-// 		salt:          requestState.verifier.CopySalt(),
-// 		tokenRequest:  requestState.Request().Marshal(),
-// 		tokenResponse: blindedSignature,
-// 		token:         token.Marshal(),
-// 	}
-// }
-
-// func verifyBasicIssuanceTestVector(t *testing.T, vector basicIssuanceTestVector) {
-// 	issuer := NewBasicPublicIssuer(vector.skS)
-// 	client := BasicPublicClient{}
-
-// 	tokenKeyID := issuer.TokenKeyID()
-// 	tokenPublicKey := issuer.TokenKey()
-
-// 	requestState, err := client.CreateTokenRequestWithBlind(vector.challenge, vector.nonce, tokenKeyID, tokenPublicKey, vector.blind, vector.salt)
-// 	if err != nil {
-// 		t.Error(err)
-// 	}
-
-// 	blindedSignature, err := issuer.Evaluate(requestState.Request())
-// 	if err != nil {
-// 		t.Error(err)
-// 	}
-
-// 	token, err := requestState.FinalizeToken(blindedSignature)
-// 	if err != nil {
-// 		t.Error(err)
-// 	}
-
-// 	if !bytes.Equal(token.Marshal(), vector.token) {
-// 		t.Fatal("Token mismatch")
-// 	}
-// }
-
-// func verifyBasicIssuanceTestVectors(t *testing.T, encoded []byte) {
-// 	vectors := basicIssuanceTestVectorArray{t: t}
-// 	err := json.Unmarshal(encoded, &vectors)
-// 	if err != nil {
-// 		t.Fatalf("Error decoding test vector string: %v", err)
-// 	}
-
-// 	for _, vector := range vectors.vectors {
-// 		verifyBasicIssuanceTestVector(t, vector)
-// 	}
-// }
-
-// func TestVectorGenerateBasicIssuance(t *testing.T) {
-// 	hash := sha256.New
-// 	secret := []byte("test vector secret")
-// 	hkdf := hkdf.New(hash, secret, nil, []byte{0x00, byte(BasicPublicTokenType & 0xFF)})
-
-// 	redemptionContext := make([]byte, 32)
-// 	hkdf.Read(redemptionContext)
-
-// 	challenges := []tokens.TokenChallenge{
-// 		createTokenChallenge(BasicPublicTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
-// 		createTokenChallenge(BasicPublicTokenType, nil, "issuer.example", []string{"origin.example"}),
-// 		createTokenChallenge(BasicPublicTokenType, nil, "issuer.example", []string{"foo.example,bar.example"}),
-// 		createTokenChallenge(BasicPublicTokenType, nil, "issuer.example", []string{}),
-// 		createTokenChallenge(BasicPublicTokenType, redemptionContext, "issuer.example", []string{}),
-// 	}
-
-// 	vectors := make([]basicIssuanceTestVector, len(challenges))
-// 	for i := 0; i < len(challenges); i++ {
-// 		challenge := challenges[i]
-
-// 		tokenKey := loadPrivateKey(t)
-// 		issuer := NewBasicPublicIssuer(tokenKey)
-// 		client := &BasicPublicClient{}
-
-// 		vectors[i] = generateBasicIssuanceTestVector(t, client, issuer, challenge)
-// 	}
-
-// 	// Encode the test vectors
-// 	encoded, err := json.Marshal(vectors)
-// 	if err != nil {
-// 		t.Fatalf("Error producing test vectors: %v", err)
-// 	}
-
-// 	// Verify that we process them correctly
-// 	verifyBasicIssuanceTestVectors(t, encoded)
-
-// 	var outputFile string
-// 	if outputFile = os.Getenv(outputBasicIssuanceTestVectorEnvironmentKey); len(outputFile) > 0 {
-// 		err := ioutil.WriteFile(outputFile, encoded, 0644)
-// 		if err != nil {
-// 			t.Fatalf("Error writing test vectors: %v", err)
-// 		}
-// 	}
-// }
-
-// func TestVectorVerifyBasicIssuance(t *testing.T) {
-// 	var inputFile string
-// 	if inputFile = os.Getenv(inputBasicIssuanceTestVectorEnvironmentKey); len(inputFile) == 0 {
-// 		t.Skip("Test vectors were not provided")
-// 	}
-
-// 	encoded, err := ioutil.ReadFile(inputFile)
-// 	if err != nil {
-// 		t.Fatalf("Failed reading test vectors: %v", err)
-// 	}
-
-// 	verifyBasicIssuanceTestVectors(t, encoded)
-// }
-
-// func BenchmarkPublicTokenRoundTrip(b *testing.B) {
-// 	tokenKey := loadPrivateKeyForBenchmark(b)
-// 	issuer := NewBasicPublicIssuer(tokenKey)
-
-// 	client := BasicPublicClient{}
-// 	tokenKeyID := issuer.TokenKeyID()
-// 	tokenPublicKey := issuer.TokenKey()
-
-// 	challenge := make([]byte, 32)
-// 	rand.Reader.Read(challenge)
-
-// 	var err error
-// 	var requestState BasicPublicTokenRequestState
-// 	b.Run("ClientRequest", func(b *testing.B) {
-// 		for n := 0; n < b.N; n++ {
-// 			nonce := make([]byte, 32)
-// 			rand.Reader.Read(nonce)
-
-// 			requestState, err = client.CreateTokenRequest(challenge, nonce, tokenKeyID, tokenPublicKey)
-// 			if err != nil {
-// 				b.Error(err)
-// 			}
-// 		}
-// 	})
-
-// 	var blindedSignature []byte
-// 	b.Run("IssuerEvaluate", func(b *testing.B) {
-// 		for n := 0; n < b.N; n++ {
-// 			blindedSignature, err = issuer.Evaluate(requestState.Request())
-// 			if err != nil {
-// 				b.Error(err)
-// 			}
-// 		}
-// 	})
-
-// 	b.Run("ClientFinalize", func(b *testing.B) {
-// 		for n := 0; n < b.N; n++ {
-// 			_, err := requestState.FinalizeToken(blindedSignature)
-// 			if err != nil {
-// 				b.Error(err)
-// 			}
-// 		}
-// 	})
-// }
+	// 2. Verifying the token is valid against the token signing key
+	verifyingKey, err := UnmarshalSignedTokenVerifyingKey(token.KeyID)
+	if err != nil {
+		t.Error("failed to unmarshal SignedTokenVerifyingKey")
+	}
+	if !ed25519.Verify(verifyingKey.publicKey, token.AuthenticatorInput(), token.Authenticator) {
+		log.Fatal("invalid token signature")
+	}
+}

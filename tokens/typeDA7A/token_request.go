@@ -7,7 +7,8 @@ import (
 )
 
 var (
-	TokenType = uint16(0xDA7A)
+	TokenType             = uint16(0xDA7A)
+	ExperimentalTokenType = uint16(0x1337)
 )
 
 type TokenRequest struct {
