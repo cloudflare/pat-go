@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -117,7 +118,8 @@ func TestBase64(t *testing.T) {
 // /////
 // Index computation test vector structure
 type rawTokenTestVector struct {
-	TokenType               uint16 `json:"token_type"`
+	Comment                 string `json:"comment"`
+	TokenType               string `json:"token_type"`
 	IssuerName              string `json:"issuer_name"`
 	RedemptionContext       string `json:"redemption_context"`
 	OriginInfo              string `json:"origin_info"`
@@ -128,6 +130,7 @@ type rawTokenTestVector struct {
 
 type tokenTestVector struct {
 	t                       *testing.T
+	comment                 string
 	tokenType               uint16
 	issuerName              string
 	redemptionContext       []byte
@@ -160,7 +163,8 @@ func (tva *tokenTestVectorArray) UnmarshalJSON(data []byte) error {
 
 func (etv tokenTestVector) MarshalJSON() ([]byte, error) {
 	return json.Marshal(rawTokenTestVector{
-		TokenType:               etv.tokenType,
+		Comment:                 etv.comment,
+		TokenType:               fmt.Sprintf("%004x", etv.tokenType),
 		IssuerName:              util.MustHex([]byte(etv.issuerName)),
 		RedemptionContext:       util.MustHex(etv.redemptionContext),
 		OriginInfo:              util.MustHex([]byte(strings.Join(etv.originInfo, ","))),
@@ -177,7 +181,13 @@ func (etv *tokenTestVector) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	etv.tokenType = raw.TokenType
+	tokenType, err := strconv.Atoi(raw.TokenType)
+	if err != nil {
+		return err
+	}
+
+	etv.comment = raw.Comment
+	etv.tokenType = uint16(tokenType)
 	etv.issuerName = string(util.MustUnhex(nil, raw.IssuerName))
 	etv.redemptionContext = util.MustUnhex(nil, raw.RedemptionContext)
 	etv.originInfo = strings.Split(string(util.MustUnhex(nil, raw.OriginInfo)), ",")
@@ -186,6 +196,25 @@ func (etv *tokenTestVector) UnmarshalJSON(data []byte) error {
 	etv.tokenAuthenticatorInput = util.MustUnhex(nil, raw.TokenAuthenticatorInput)
 
 	return nil
+}
+
+func wrapString(prefix, text string, lineWidth int) string {
+	words := strings.Fields(strings.TrimSpace(text))
+	if len(words) == 0 {
+		return text
+	}
+	wrapped := prefix + " " + words[0]
+	spaceLeft := lineWidth - len(wrapped)
+	for _, word := range words[1:] {
+		if len(word)+1 > spaceLeft {
+			wrapped += "\n" + prefix + " " + word
+			spaceLeft = lineWidth - len(word)
+		} else {
+			wrapped += " " + word
+			spaceLeft -= 1 + len(word)
+		}
+	}
+	return wrapped
 }
 
 func generateTokenTestVector(t *testing.T, tokenType uint16, redemptionContext []byte, issuerName string, originInfo []string, nonce []byte, tokenSigningKey *rsa.PrivateKey) (tokenTestVector, error) {
@@ -204,7 +233,20 @@ func generateTokenTestVector(t *testing.T, tokenType uint16, redemptionContext [
 		Authenticator: nil, // No signature computed yet
 	}
 
+	// 	- TokenChallenge with a single origin and non-empty redemption context
+	// - TokenChallenge with a single origin and empty redemption context
+	// - TokenChallenge with an empty origin and redemption context
+	// - TokenChallenge with an empty origin and non-empty redemption context
+	// - TokenChallenge with a multiple origins and non-empty redemption context
+	// token type (xxx), issuer name (xxx), single origin (xxx), non-empty redemption context
+	contextComment := "empty"
+	if len(redemptionContext) > 0 {
+		contextComment = "non-empty"
+	}
+	comment := wrapString("//  ", fmt.Sprintf("token_type(%04x), issuer_name(%s), origin_info(%s), redemption_context(%s)", tokenType, issuerName, strings.Join(originInfo, ","), contextComment), 65)
+
 	return tokenTestVector{
+		comment:                 comment,
 		tokenType:               tokenType,
 		issuerName:              issuerName,
 		originInfo:              originInfo,
@@ -259,7 +301,7 @@ func TestVectorGenerateToken(t *testing.T) {
 	tokenSigningKey := loadPrivateKey(t)
 	issuerName := "issuer.example"
 	singleOriginInfo := []string{"origin.example"}
-	multipleOriginInfo := []string{"origin.example", "origin2.example"}
+	multipleOriginInfo := []string{"foo.example", "bar.example"}
 
 	var vectorInputs = []struct {
 		tokenType         uint16
