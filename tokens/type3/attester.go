@@ -132,7 +132,7 @@ func (a *RateLimitedAttester) VerifyRequest(tokenRequest RateLimitedTokenRequest
 }
 
 func computeIndex(clientKey, indexKey []byte) ([]byte, error) {
-	hkdf := hkdf.New(sha512.New384, indexKey, clientKey, []byte("anon_issuer_origin_id"))
+	hkdf := hkdf.New(sha512.New384, indexKey, clientKey, []byte("IssuerOriginAlias"))
 	clientOriginIndex := make([]byte, crypto.SHA384.Size())
 	if _, err := io.ReadFull(hkdf, clientOriginIndex); err != nil {
 		return nil, err
