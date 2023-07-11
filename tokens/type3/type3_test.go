@@ -571,7 +571,7 @@ type rawAnonOriginIDTestVector struct {
 	RequestBlind  string `json:"request_blind"`
 	IndexRequest  string `json:"request_key"`
 	IndexResponse string `json:"index_key"`
-	Index         string `json:"anon_issuer_origin_id"`
+	Index         string `json:"issuer_origin_alias"`
 }
 
 type anonOriginIDTestVector struct {

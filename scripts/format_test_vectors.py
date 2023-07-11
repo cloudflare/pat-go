@@ -62,7 +62,7 @@ if "type3-origin-encryption-test-vectors.json" in sys.argv[1]:
 
 if "type3-anon-origin-id-test-vectors.json" in sys.argv[1]:
     ordered_keys = [
-        "sk_sign", "pk_sign", "sk_origin", "request_blind", "request_key", "index_key", "anon_issuer_origin_id"
+        "sk_sign", "pk_sign", "sk_origin", "request_blind", "request_key", "index_key", "issuer_origin_alias"
     ]
     format_vector(ordered_keys, sys.argv[1])
 
