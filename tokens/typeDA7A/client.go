@@ -6,7 +6,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 
-	"github.com/cloudflare/circl/blindsign/blindrsa"
+	"github.com/cloudflare/circl/blindsign/blindrsa/partiallyblindrsa"
 	"github.com/cloudflare/pat-go/tokens"
 )
 
@@ -22,8 +22,8 @@ type TokenRequestState struct {
 	extensions      []byte
 	request         *TokenRequest
 	verificationKey *rsa.PublicKey
-	verifier        blindrsa.PBRSAVerifier
-	verifierState   blindrsa.PBRSAVerifierState
+	verifier        partiallyblindrsa.Verifier
+	verifierState   partiallyblindrsa.VerifierState
 }
 
 func (s TokenRequestState) Request() *TokenRequest {
@@ -54,7 +54,7 @@ func (s TokenRequestState) FinalizeToken(blindSignature []byte) (tokens.Token, e
 
 // https://smhendrickson.github.io/draft-hendrickson-privacypass-public-metadata-issuance/draft-hendrickson-privacypass-public-metadata.html#name-client-to-issuer-request
 func (c Client) CreateTokenRequest(challenge, nonce, extensions, tokenKeyID []byte, tokenKey *rsa.PublicKey) (TokenRequestState, error) {
-	verifier := blindrsa.NewRandomizedPBRSAVerifier(tokenKey, crypto.SHA384)
+	verifier := partiallyblindrsa.NewVerifier(tokenKey, crypto.SHA384)
 
 	context := sha256.Sum256(challenge)
 	token := tokens.Token{

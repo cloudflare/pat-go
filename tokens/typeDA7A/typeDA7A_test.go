@@ -8,7 +8,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/cloudflare/circl/blindsign/blindrsa"
+	"github.com/cloudflare/circl/blindsign/blindrsa/partiallyblindrsa"
 	"github.com/cloudflare/pat-go/tokens"
 )
 
@@ -103,7 +103,7 @@ func TestTypeDA7AIssuanceRoundTrip(t *testing.T) {
 		t.Error(err)
 	}
 
-	verifier := blindrsa.NewRandomizedPBRSAVerifier(tokenPublicKey, crypto.SHA384)
+	verifier := partiallyblindrsa.NewVerifier(tokenPublicKey, crypto.SHA384)
 	err = verifier.Verify(token.AuthenticatorInput(), encodedExtensions, token.Authenticator)
 	if err != nil {
 		t.Error(err)

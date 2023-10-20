@@ -22,7 +22,7 @@ type BasicPublicTokenRequestState struct {
 	tokenInput      []byte
 	request         *BasicPublicTokenRequest
 	verificationKey *rsa.PublicKey
-	verifier        blindrsa.BRSAVerifierState
+	verifier        blindrsa.VerifierState
 }
 
 func (s BasicPublicTokenRequestState) Request() *BasicPublicTokenRequest {
@@ -62,7 +62,7 @@ func (s BasicPublicTokenRequestState) FinalizeToken(blindSignature []byte) (toke
 
 // https://ietf-wg-privacypass.github.io/base-drafts/caw/pp-issuance/draft-ietf-privacypass-protocol.html#name-issuance-protocol-for-publi
 func (c BasicPublicClient) CreateTokenRequest(challenge, nonce []byte, tokenKeyID []byte, tokenKey *rsa.PublicKey) (BasicPublicTokenRequestState, error) {
-	verifier := blindrsa.NewBRSAVerifier(tokenKey, crypto.SHA384)
+	verifier := blindrsa.NewVerifier(tokenKey, crypto.SHA384)
 
 	context := sha256.Sum256(challenge)
 	token := tokens.Token{
@@ -95,7 +95,7 @@ func (c BasicPublicClient) CreateTokenRequest(challenge, nonce []byte, tokenKeyI
 }
 
 func (c BasicPublicClient) CreateTokenRequestWithBlind(challenge, nonce []byte, tokenKeyID []byte, tokenKey *rsa.PublicKey, blind, salt []byte) (BasicPublicTokenRequestState, error) {
-	verifier := blindrsa.NewBRSAVerifier(tokenKey, crypto.SHA384)
+	verifier := blindrsa.NewVerifier(tokenKey, crypto.SHA384)
 
 	context := sha256.Sum256(challenge)
 	token := tokens.Token{

@@ -98,7 +98,7 @@ type RateLimitedTokenRequestState struct {
 	encapEnc          []byte
 	nameKey           EncapKey
 	verificationKey   *rsa.PublicKey
-	verifier          blindrsa.BRSAVerifierState
+	verifier          blindrsa.VerifierState
 }
 
 func (s RateLimitedTokenRequestState) Request() *RateLimitedTokenRequest {
@@ -190,7 +190,7 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 	}
 	blindedPublicKeyEnc := elliptic.MarshalCompressed(c.curve, blindedPublicKey.X, blindedPublicKey.Y)
 
-	verifier := blindrsa.NewBRSAVerifier(tokenKey, crypto.SHA384)
+	verifier := blindrsa.NewVerifier(tokenKey, crypto.SHA384)
 
 	context := sha256.Sum256(challenge)
 	token := tokens.Token{

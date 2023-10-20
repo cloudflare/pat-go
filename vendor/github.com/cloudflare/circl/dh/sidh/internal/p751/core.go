@@ -9,7 +9,7 @@ import (
 )
 
 // -----------------------------------------------------------------------------
-// Functions for traversing isogeny trees acoording to strategy. Key type 'A' is
+// Functions for traversing isogeny trees according to strategy. Key type 'A' is
 //
 
 // Traverses isogeny tree in order to compute xR, xP, xQ and xQmP needed
@@ -252,7 +252,7 @@ func DeriveSecretA(ss, prv []byte, pub3Pt *[3]Fp2) {
 	// Traverse isogeny tree
 	traverseTreeSharedKeyA(&cparam, &xR)
 
-	// Calculate j-invariant on isogeneus curve
+	// Calculate j-invariant on isogenous curve
 	c := phi.GenerateCurve(&xR)
 	RecoverCurveCoefficients4(&cparam, &c)
 	Jinvariant(&cparam, &jInv)
@@ -290,7 +290,7 @@ func DeriveSecretB(ss, prv []byte, pub3Pt *[3]Fp2) {
 	// Traverse isogeny tree
 	traverseTreeSharedKeyB(&cparam, &xR)
 
-	// Calculate j-invariant on isogeneus curve
+	// Calculate j-invariant on isogenous curve
 	c := phi.GenerateCurve(&xR)
 	RecoverCurveCoefficients3(&cparam, &c)
 	Jinvariant(&cparam, &jInv)

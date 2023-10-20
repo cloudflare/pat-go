@@ -32,7 +32,7 @@ func (i *BasicPublicIssuer) TokenKeyID() []byte {
 }
 
 func (i BasicPublicIssuer) Evaluate(req *BasicPublicTokenRequest) ([]byte, error) {
-	signer := blindrsa.NewBRSASigner(i.tokenKey)
+	signer := blindrsa.NewSigner(i.tokenKey)
 	blindSignature, err := signer.BlindSign(req.BlindedReq)
 	if err != nil {
 		return nil, err
