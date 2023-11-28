@@ -11,9 +11,12 @@ github.com/cisco/go-hpke
 # github.com/cisco/go-tls-syntax v0.0.0-20200617162716-46b0cfb76b9b
 ## explicit; go 1.14
 github.com/cisco/go-tls-syntax
-# github.com/cloudflare/circl v1.3.3 => github.com/chris-wood/circl v1.3.5-0.20230614111335-8d0cc8cfe415
+# github.com/cloudflare/circl v1.3.5
 ## explicit; go 1.19
 github.com/cloudflare/circl/blindsign/blindrsa
+github.com/cloudflare/circl/blindsign/blindrsa/internal/common
+github.com/cloudflare/circl/blindsign/blindrsa/internal/keys
+github.com/cloudflare/circl/blindsign/blindrsa/partiallyblindrsa
 github.com/cloudflare/circl/dh/sidh
 github.com/cloudflare/circl/dh/sidh/internal/common
 github.com/cloudflare/circl/dh/sidh/internal/p434
