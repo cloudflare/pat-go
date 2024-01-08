@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/cisco/go-hpke v0.0.0-20210524174249-dd22b38cf960
-	github.com/cloudflare/circl v1.3.6
+	github.com/cloudflare/circl v1.3.7
 	golang.org/x/crypto v0.17.0
 )
 
