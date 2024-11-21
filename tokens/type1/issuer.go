@@ -66,6 +66,10 @@ func (i BasicPrivateIssuer) Evaluate(req *BasicPrivateTokenRequest) ([]byte, err
 	return tokenResponse, nil
 }
 
+func (i *BasicPrivateIssuer) Type() uint16 {
+	return BasicPrivateTokenType
+}
+
 func (i BasicPrivateIssuer) Verify(token tokens.Token) error {
 	server := oprf.NewVerifiableServer(oprf.SuiteP384, i.tokenKey)
 

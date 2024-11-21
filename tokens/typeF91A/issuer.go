@@ -87,6 +87,10 @@ func (i BatchedPrivateIssuer) Evaluate(req *BatchedPrivateTokenRequest) ([]byte,
 	return b.BytesOrPanic(), nil
 }
 
+func (i *BatchedPrivateIssuer) Type() uint16 {
+	return BatchedPrivateTokenType
+}
+
 func (i BatchedPrivateIssuer) Verify(token tokens.Token) error {
 	server := oprf.NewVerifiableServer(oprf.SuiteRistretto255, i.tokenKey)
 
