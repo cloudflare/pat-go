@@ -40,3 +40,7 @@ func (i BasicPublicIssuer) Evaluate(req *BasicPublicTokenRequest) ([]byte, error
 
 	return blindSignature, nil
 }
+
+func (i *BasicPublicIssuer) Type() uint16 {
+	return BasicPublicTokenType
+}
