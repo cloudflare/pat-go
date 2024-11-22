@@ -744,7 +744,6 @@ func TestVectorGenerateBatchedIssuance(t *testing.T) {
 	redemptionContext := make([]byte, 32)
 	hkdf.Read(redemptionContext)
 
-	// TODO: this should be an array of array
 	challenges := [][]tokens.TokenChallenge{
 		{
 			createTokenChallenge(type1.BasicPrivateTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
