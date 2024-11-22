@@ -151,11 +151,11 @@ type rawIssuanceTestVector struct {
 	PrivateKey string   `json:"skS"`
 	PublicKey  string   `json:"pkS"`
 	Challenge  string   `json:"token_challenge"`
-	Nonce      *string  `json:"nonce"`
-	Nonces     []string `json:"nonces"`
-	Blind      *string  `json:"blind"`
-	Blinds     []string `json:"blinds"`
-	Salt       *string  `json:"salt"`
+	Nonce      *string  `json:"nonce,omitempty"`
+	Nonces     []string `json:"nonces,omitempty"`
+	Blind      *string  `json:"blind,omitempty"`
+	Blinds     []string `json:"blinds,omitempty"`
+	Salt       *string  `json:"salt,omitempty"`
 }
 
 type rawBatchIssuanceTestVector struct {
@@ -167,6 +167,7 @@ type rawBatchIssuanceTestVector struct {
 type IssuanceTestVector struct {
 	tokenType uint16
 	skS       []byte
+	pkS       []byte
 	challenge []byte
 	nonce     []byte
 	nonces    [][]byte
@@ -213,7 +214,7 @@ func (etv BatchedIssuanceTestVector) MarshalJSON() ([]byte, error) {
 		issuance[i] = rawIssuanceTestVector{
 			TokenType:  util.MustHex(tokenTypeEnc),
 			PrivateKey: util.MustHex(v.skS),
-			PublicKey:  util.MustHex(v.skS), // TODO: need public key
+			PublicKey:  util.MustHex(v.pkS),
 			Challenge:  util.MustHex(v.challenge),
 		}
 		if v.blind != nil {
@@ -254,6 +255,7 @@ func (etv *BatchedIssuanceTestVector) UnmarshalJSON(data []byte) error {
 		res := IssuanceTestVector{
 			tokenType: binary.BigEndian.Uint16(util.MustUnhex(etv.t, v.TokenType)),
 			skS:       util.MustUnhex(nil, v.PrivateKey),
+			pkS:       util.MustUnhex(nil, v.PublicKey),
 			challenge: util.MustUnhex(nil, v.Challenge),
 		}
 		if v.Blind != nil {
@@ -282,18 +284,21 @@ func (etv *BatchedIssuanceTestVector) UnmarshalJSON(data []byte) error {
 
 type innerGenerateType1 struct {
 	challenge tokens.TokenChallenge
+	sk        *oprf.PrivateKey
 	issuer    *type1.BasicPrivateIssuer
 	client    *type1.BasicPrivateClient
 }
 
 type innerGenerateType2 struct {
 	challenge tokens.TokenChallenge
+	sk        *rsa.PrivateKey
 	issuer    *type2.BasicPublicIssuer
 	client    *type2.BasicPublicClient
 }
 
 type innerGenerateTypeF91A struct {
 	challenge tokens.TokenChallenge
+	sk        *oprf.PrivateKey
 	issuer    *typeF91A.BatchedPrivateIssuer
 	client    *typeF91A.BatchedPrivateClient
 }
@@ -343,13 +348,26 @@ func (i innerGenerate) Challenge() (*tokens.TokenChallenge, error) {
 
 func (i innerGenerate) PrivateKey() ([]byte, error) {
 	if i.inner1 != nil {
-		return i.inner1.issuer.TokenKey().MarshalBinary()
+		return util.MustMarshalPrivateOPRFKey(i.inner1.sk), nil
 	}
 	if i.inner2 != nil {
-		return i.inner2.issuer.TokenKey().N.MarshalText()
+		return util.MustMarshalPrivateKey(i.inner2.sk), nil
 	}
 	if i.innerF91A != nil {
-		return i.innerF91A.issuer.TokenKey().MarshalBinary()
+		return util.MustMarshalPrivateOPRFKey(i.innerF91A.sk), nil
+	}
+	return nil, errors.New("unreachable")
+}
+
+func (i innerGenerate) PublicKey() ([]byte, error) {
+	if i.inner1 != nil {
+		return util.MustMarshalPublicOPRFKey(i.inner1.issuer.TokenKey()), nil
+	}
+	if i.inner2 != nil {
+		return util.MustMarshalPublicKey(i.inner2.issuer.TokenKey()), nil
+	}
+	if i.innerF91A != nil {
+		return util.MustMarshalPublicOPRFKey(i.innerF91A.issuer.TokenKey()), nil
 	}
 	return nil, errors.New("unreachable")
 }
@@ -639,7 +657,6 @@ func generateBatchIssuanceBlindingTestVector(t *testing.T, client *BatchedClient
 		tokenOption, err := requestState.FinalizeToken(resp)
 		if err != nil {
 			t.Error(err)
-			panic("-----------")
 		}
 
 		blindOption, err := requestState.BlindOption()
@@ -651,9 +668,15 @@ func generateBatchIssuanceBlindingTestVector(t *testing.T, client *BatchedClient
 		if err != nil {
 			t.Error(err)
 		}
+
+		publicKey, err := args.PublicKey()
+		if err != nil {
+			t.Error(err)
+		}
 		issuanceTestVectors[i] = IssuanceTestVector{
 			tokenType: challenge.TokenType,
 			skS:       privateKey,
+			pkS:       publicKey,
 			challenge: challenge.Marshal(),
 			nonce:     nonces[i].nonce,
 			nonces:    nonces[i].nonces,
@@ -770,11 +793,11 @@ func TestVectorGenerateBatchedIssuance(t *testing.T) {
 
 			switch challenge.TokenType {
 			case type1.BasicPrivateTokenType:
-				tokenKey, err := oprf.DeriveKey(oprf.SuiteP384, oprf.VerifiableMode, []byte("fixed seed"), challengeEnc)
+				sk, err := oprf.DeriveKey(oprf.SuiteP384, oprf.VerifiableMode, []byte("fixed seed"), challengeEnc)
 				if err != nil {
 					t.Fatal(err)
 				}
-				issuer := type1.NewBasicPrivateIssuer(tokenKey)
+				issuer := type1.NewBasicPrivateIssuer(sk)
 				if issuer == nil {
 					t.Fatal("Error creating type1 issuer")
 				}
@@ -782,12 +805,13 @@ func TestVectorGenerateBatchedIssuance(t *testing.T) {
 				client := &type1.BasicPrivateClient{}
 				generateArgs[j] = newInnerGenerateType1(&innerGenerateType1{
 					challenge,
+					sk,
 					issuer,
 					client,
 				})
 			case type2.BasicPublicTokenType:
-				tokenKey := loadPrivateKey(t)
-				issuer := type2.NewBasicPublicIssuer(tokenKey)
+				sk := loadPrivateKey(t)
+				issuer := type2.NewBasicPublicIssuer(sk)
 				if issuer == nil {
 					t.Fatal("Error creating type2 issuer")
 				}
@@ -795,15 +819,16 @@ func TestVectorGenerateBatchedIssuance(t *testing.T) {
 				client := &type2.BasicPublicClient{}
 				generateArgs[j] = newInnerGenerateType2(&innerGenerateType2{
 					challenge,
+					sk,
 					issuer,
 					client,
 				})
 			case typeF91A.BatchedPrivateTokenType:
-				tokenKey, err := oprf.DeriveKey(oprf.SuiteRistretto255, oprf.VerifiableMode, []byte("fixed seed"), challengeEnc)
+				sk, err := oprf.DeriveKey(oprf.SuiteRistretto255, oprf.VerifiableMode, []byte("fixed seed"), challengeEnc)
 				if err != nil {
 					t.Fatal(err)
 				}
-				issuer := typeF91A.NewBatchedPrivateIssuer(tokenKey)
+				issuer := typeF91A.NewBatchedPrivateIssuer(sk)
 				if issuer == nil {
 					t.Fatal("Error creating typeF91A issuer")
 				}
@@ -811,6 +836,7 @@ func TestVectorGenerateBatchedIssuance(t *testing.T) {
 				client := &typeF91A.BatchedPrivateClient{}
 				generateArgs[j] = newInnerGenerateTypeF91A(&innerGenerateTypeF91A{
 					challenge,
+					sk,
 					issuer,
 					client,
 				})
