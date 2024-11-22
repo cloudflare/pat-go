@@ -28,6 +28,10 @@ func (s BasicPrivateTokenRequestState) Request() *BasicPrivateTokenRequest {
 	return s.request
 }
 
+func (s BasicPrivateTokenRequestState) ForTestsOnlyVerifier() *oprf.FinalizeData {
+	return s.verifier
+}
+
 func (s BasicPrivateTokenRequestState) FinalizeToken(tokenResponseEnc []byte) (tokens.Token, error) {
 	evaluatedElement := group.P384.NewElement()
 	err := evaluatedElement.UnmarshalBinary(tokenResponseEnc[:group.P384.Params().CompressedElementLength])

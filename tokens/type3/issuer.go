@@ -229,3 +229,7 @@ func (i RateLimitedIssuer) Evaluate(encodedRequest []byte) ([]byte, []byte, erro
 
 	return encryptedTokenResponse, blindedRequestKeyEnc, nil
 }
+
+func (i RateLimitedIssuer) Type() uint16 {
+	return RateLimitedTokenType
+}

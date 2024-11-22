@@ -87,7 +87,7 @@ func (i BatchedPrivateIssuer) Evaluate(req *BatchedPrivateTokenRequest) ([]byte,
 	return b.BytesOrPanic(), nil
 }
 
-func (i *BatchedPrivateIssuer) Type() uint16 {
+func (i BatchedPrivateIssuer) Type() uint16 {
 	return BatchedPrivateTokenType
 }
 

@@ -29,6 +29,10 @@ func (s BasicPublicTokenRequestState) Request() *BasicPublicTokenRequest {
 	return s.request
 }
 
+func (s BasicPublicTokenRequestState) ForTestsOnlyVerifier() blindrsa.VerifierState {
+	return s.verifier
+}
+
 func (s BasicPublicTokenRequestState) FinalizeToken(blindSignature []byte) (tokens.Token, error) {
 	signature, err := s.verifier.Finalize(blindSignature)
 	if err != nil {

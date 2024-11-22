@@ -6,7 +6,6 @@ import (
 	"github.com/cloudflare/pat-go/tokens"
 	"github.com/cloudflare/pat-go/tokens/type1"
 	"github.com/cloudflare/pat-go/tokens/type2"
-	"github.com/cloudflare/pat-go/tokens/type3"
 	"github.com/cloudflare/pat-go/tokens/typeF91A"
 )
 
@@ -18,7 +17,7 @@ func NewBasicClient() BatchedClient {
 }
 
 // https://datatracker.ietf.org/doc/html/draft-ietf-privacypass-batched-tokens-03
-func (c BatchedClient) CreateTokenRequest(tokenRequests []tokens.TokenRequestWithTypePrefix) (*BatchedTokenRequest, error) {
+func (c BatchedClient) CreateTokenRequest(tokenRequests []tokens.TokenRequestWithDetails) (*BatchedTokenRequest, error) {
 	if len(tokenRequests) == 0 {
 		return nil, fmt.Errorf("no token requests")
 	}
@@ -33,11 +32,6 @@ func (c BatchedClient) CreateTokenRequest(tokenRequests []tokens.TokenRequestWit
 		case type2.BasicPublicTokenType:
 			casted, ok := tokenRequest.(*type2.BasicPublicTokenRequest)
 			if !ok || casted.Type() != type2.BasicPublicTokenType {
-				return nil, fmt.Errorf("invalid token request type")
-			}
-		case type3.RateLimitedTokenType:
-			casted, ok := tokenRequest.(*type3.RateLimitedTokenRequest)
-			if !ok || casted.Type() != type3.RateLimitedTokenType {
 				return nil, fmt.Errorf("invalid token request type")
 			}
 		case typeF91A.BatchedPrivateTokenType:

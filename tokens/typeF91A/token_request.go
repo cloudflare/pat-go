@@ -16,7 +16,11 @@ type BatchedPrivateTokenRequest struct {
 	BlindedReq [][]byte
 }
 
-func (r BatchedPrivateTokenRequest) Type() uint16 {
+func (r *BatchedPrivateTokenRequest) TruncatedTokenKeyID() uint8 {
+	return r.TokenKeyID
+}
+
+func (r *BatchedPrivateTokenRequest) Type() uint16 {
 	return BatchedPrivateTokenType
 }
 

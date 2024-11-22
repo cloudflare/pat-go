@@ -19,7 +19,7 @@ type RateLimitedTokenRequest struct {
 	Signature             []byte // Nsig bytes
 }
 
-func (r RateLimitedTokenRequest) Type() uint16 {
+func (r *RateLimitedTokenRequest) Type() uint16 {
 	return RateLimitedTokenType
 }
 

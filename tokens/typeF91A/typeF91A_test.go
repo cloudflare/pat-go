@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"io/ioutil"
 	"os"
@@ -122,14 +121,6 @@ func (tva *BatchedPrivateIssuanceTestVectorArray) UnmarshalJSON(data []byte) err
 	return nil
 }
 
-func mustHexList(d [][]byte) []string {
-	hexValues := make([]string, len(d))
-	for i := 0; i < len(d); i++ {
-		hexValues[i] = hex.EncodeToString(d[i])
-	}
-	return hexValues
-}
-
 func (etv BatchedPrivateIssuanceTestVector) MarshalJSON() ([]byte, error) {
 	tokens := make([][]byte, len(etv.tokens))
 	for i := 0; i < len(tokens); i++ {
@@ -140,11 +131,11 @@ func (etv BatchedPrivateIssuanceTestVector) MarshalJSON() ([]byte, error) {
 		PrivateKey:    util.MustHex(util.MustMarshalPrivateOPRFKey(etv.skS)),
 		PublicKey:     util.MustHex(util.MustMarshalPublicOPRFKey(etv.skS.Public())),
 		Challenge:     util.MustHex(etv.challenge),
-		Nonces:        mustHexList(etv.nonces),
-		Blinds:        mustHexList(etv.blinds),
+		Nonces:        util.MustHexList(etv.nonces),
+		Blinds:        util.MustHexList(etv.blinds),
 		TokenRequest:  util.MustHex(etv.tokenRequest),
 		TokenResponse: util.MustHex(etv.tokenResponse),
-		Tokens:        mustHexList(tokens),
+		Tokens:        util.MustHexList(tokens),
 	})
 }
 
