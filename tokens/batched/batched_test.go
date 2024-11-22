@@ -1,6 +1,7 @@
 package batched
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -144,6 +145,19 @@ func (i basicIssuer[T]) Type() uint16 {
 	}
 }
 
+func UnmarshalArbitratyToken(tokenType uint16, data []byte) (tokens.Token, error) {
+	switch tokenType {
+	case type1.BasicPrivateTokenType:
+		return type1.UnmarshalPrivateToken(data)
+	case type2.BasicPublicTokenType:
+		return type2.UnmarshalToken(data)
+	case typeF91A.BatchedPrivateTokenType:
+		return typeF91A.UnmarshalBatchedPrivateToken(data)
+	default:
+		return tokens.Token{}, errors.New("invalid Token encoding")
+	}
+}
+
 // /////
 // Basic issuance test vector
 type rawIssuanceTestVector struct {
@@ -156,6 +170,8 @@ type rawIssuanceTestVector struct {
 	Blind      *string  `json:"blind,omitempty"`
 	Blinds     []string `json:"blinds,omitempty"`
 	Salt       *string  `json:"salt,omitempty"`
+	Token      *string  `json:"token,omitempty"`
+	Tokens     []string `json:"tokens,omitempty"`
 }
 
 type rawBatchIssuanceTestVector struct {
@@ -235,6 +251,17 @@ func (etv BatchedIssuanceTestVector) MarshalJSON() ([]byte, error) {
 			salt := util.MustHex(v.salt)
 			issuance[i].Salt = &salt
 		}
+		if v.token != nil {
+			token := util.MustHex(v.token.Marshal())
+			issuance[i].Token = &token
+		}
+		if v.tokens != nil {
+			tokens := make([][]byte, len(v.tokens))
+			for i, token := range v.tokens {
+				tokens[i] = token.Marshal()
+			}
+			issuance[i].Tokens = util.MustHexList(tokens)
+		}
 	}
 	return json.Marshal(rawBatchIssuanceTestVector{
 		Issuance:      issuance,
@@ -272,6 +299,24 @@ func (etv *BatchedIssuanceTestVector) UnmarshalJSON(data []byte) error {
 		}
 		if v.Salt != nil {
 			res.salt = util.MustUnhex(etv.t, *v.Salt)
+		}
+		if v.Token != nil {
+			token, err := UnmarshalArbitratyToken(res.tokenType, util.MustUnhex(etv.t, *v.Token))
+			if err != nil {
+				return err
+			}
+			res.token = &token
+		}
+		if v.Tokens != nil {
+			tokens := make([]tokens.Token, len(v.Tokens))
+			for i, token := range v.Tokens {
+				token, err := UnmarshalArbitratyToken(res.tokenType, util.MustUnhex(etv.t, token))
+				if err != nil {
+					return err
+				}
+				tokens[i] = token
+			}
+			res.tokens = tokens
 		}
 		issuance[i] = res
 	}
@@ -696,32 +741,128 @@ func generateBatchIssuanceBlindingTestVector(t *testing.T, client *BatchedClient
 	}
 }
 
-// func verifyBasicPrivateIssuanceTestVector(t *testing.T, vector BatchedIssuanceTestVector) {
-// 	issuer := NewBasicPrivateIssuer(vector.skS)
-// 	client := BatchedClient{}
+func verifyBasicPrivateIssuanceTestVector(t *testing.T, vector BatchedIssuanceTestVector) {
+	tokenGenerate := make([]innerGenerate, len(vector.issuance))
+	requestStates := make([]tokenRequestState, len(vector.issuance))
+	requests := make([]tokens.TokenRequestWithDetails, len(vector.issuance))
+	issuers := make([]Issuer, len(vector.issuance))
+	for i, issuance := range vector.issuance {
+		switch issuance.tokenType {
+		case type1.BasicPrivateTokenType:
+			challengeEnc := issuance.challenge
+			challenge, err := tokens.UnmarshalTokenChallenge(challengeEnc)
+			if err != nil {
+				t.Error(err)
+			}
+			sk := util.MustUnmarshalPrivateOPRFKey(issuance.skS)
+			if err != nil {
+				t.Fatal(err)
+			}
+			issuer := type1.NewBasicPrivateIssuer(sk)
+			issuers[i] = newBasicIssuer(*issuer)
+			client := &type1.BasicPrivateClient{}
+			requestState, err := client.CreateTokenRequestWithBlind(challengeEnc, issuance.nonce, issuer.TokenKeyID(), issuer.TokenKey(), issuance.blind)
+			if err != nil {
+				t.Error(err)
+			}
+			requestStates[i] = newTokenRequestStateType1(&requestState)
+			requests[i] = requestState.Request()
+			tokenGenerate[i] = newInnerGenerateType1(&innerGenerateType1{
+				challenge,
+				sk,
+				issuer,
+				client,
+			})
+		case type2.BasicPublicTokenType:
+			challengeEnc := issuance.challenge
+			challenge, err := tokens.UnmarshalTokenChallenge(challengeEnc)
+			if err != nil {
+				t.Error(err)
+			}
+			sk := util.MustUnmarshalPrivateKey(issuance.skS)
+			issuer := type2.NewBasicPublicIssuer(sk)
+			issuers[i] = newBasicIssuer(*issuer)
+			client := &type2.BasicPublicClient{}
+			requestState, err := client.CreateTokenRequestWithBlind(challengeEnc, issuance.nonce, issuer.TokenKeyID(), issuer.TokenKey(), issuance.blind, issuance.salt)
+			if err != nil {
+				t.Error(err)
+			}
+			requestStates[i] = newTokenRequestStateType2(&requestState)
+			requests[i] = requestState.Request()
+			tokenGenerate[i] = newInnerGenerateType2(&innerGenerateType2{
+				challenge,
+				sk,
+				issuer,
+				client,
+			})
+		case typeF91A.BatchedPrivateTokenType:
+			challengeEnc := issuance.challenge
+			challenge, err := tokens.UnmarshalTokenChallenge(challengeEnc)
+			if err != nil {
+				t.Error(err)
+			}
+			sk := util.MustUnmarshalBatchedPrivateOPRFKey(issuance.skS)
+			issuer := typeF91A.NewBatchedPrivateIssuer(sk)
+			issuers[i] = newBasicIssuer(*issuer)
+			client := &typeF91A.BatchedPrivateClient{}
+			requestState, err := client.CreateTokenRequestWithBlinds(challengeEnc, issuance.nonces, issuer.TokenKeyID(), issuer.TokenKey(), issuance.blinds)
+			if err != nil {
+				t.Error(err)
+			}
+			requestStates[i] = newTokenRequestStateTypeF91A(&requestState)
+			requests[i] = requestState.Request()
+			tokenGenerate[i] = newInnerGenerateTypeF91A(&innerGenerateTypeF91A{
+				challenge,
+				sk,
+				issuer,
+				client,
+			})
+		}
+	}
 
-// 	tokenKeyID := issuer.TokenKeyID()
-// 	tokenPublicKey := issuer.TokenKey()
+	issuer := NewBasicBatchedIssuer(issuers...)
+	client := NewBasicClient()
 
-// 	requestState, err := client.CreateTokenRequestWithBlind(vector.challenge, vector.nonce, tokenKeyID, tokenPublicKey, vector.blind)
-// 	if err != nil {
-// 		t.Error(err)
-// 	}
+	tokenRequest, err := client.CreateTokenRequest(requests)
+	if err != nil {
+		t.Error(err)
+	}
+	if !bytes.Equal(tokenRequest.Marshal(), vector.tokenRequest) {
+		t.Fatal("TokenRequest mismatch")
+	}
 
-// 	blindedSignature, err := issuer.Evaluate(requestState.Request())
-// 	if err != nil {
-// 		t.Error(err)
-// 	}
+	batchedResps, err := issuer.EvaluateBatch(tokenRequest)
+	if err != nil {
+		t.Error(err)
+	}
+	// some issuer response are non deterministic, so we cannot check them
 
-// 	token, err := requestState.FinalizeToken(blindedSignature)
-// 	if err != nil {
-// 		t.Error(err)
-// 	}
+	resps, err := UnmarshalBatchedTokenResponses(batchedResps)
+	if err != nil {
+		t.Error(err)
+	}
 
-// 	if !bytes.Equal(token.Marshal(), vector.token) {
-// 		t.Fatal("Token mismatch")
-// 	}
-// }
+	for i, resp := range resps {
+		option, err := requestStates[i].FinalizeToken(resp)
+		if err != nil {
+			t.Error(err)
+		}
+		issuance := vector.issuance[i]
+
+		switch issuance.tokenType {
+		case type1.BasicPrivateTokenType, type2.BasicPublicTokenType:
+			if !bytes.Equal(option.token.Marshal(), issuance.token.Marshal()) {
+				t.Fatal("Token mismatch")
+			}
+		case typeF91A.BatchedPrivateTokenType:
+			for j, token := range issuance.tokens {
+				if !bytes.Equal(option.tokens[j].Marshal(), token.Marshal()) {
+					t.Fatal("Tokens mismatch")
+				}
+			}
+		}
+	}
+}
 
 func verifyBatchedIssuanceTestVectors(t *testing.T, encoded []byte) {
 	vectors := BasicPrivateIssuanceTestVectorArray{t: t}
@@ -730,9 +871,8 @@ func verifyBatchedIssuanceTestVectors(t *testing.T, encoded []byte) {
 		t.Fatalf("Error decoding test vector string: %v", err)
 	}
 
-	for i, _ := range vectors.vectors {
-		t.Log(i)
-		// verifyBasicPrivateIssuanceTestVector(t, vector)
+	for _, vector := range vectors.vectors {
+		verifyBasicPrivateIssuanceTestVector(t, vector)
 	}
 }
 
@@ -764,21 +904,12 @@ func TestVectorGenerateBatchedIssuance(t *testing.T) {
 			createTokenChallenge(type2.BasicPublicTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
 		},
 		{
-			createTokenChallenge(type1.BasicPrivateTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
-			createTokenChallenge(type1.BasicPrivateTokenType, nil, "issuer.example", []string{"origin.example"}),
-			createTokenChallenge(type1.BasicPrivateTokenType, nil, "issuer.example", []string{"foo.example,bar.example"}),
-			createTokenChallenge(type1.BasicPrivateTokenType, nil, "issuer.example", []string{}),
-			createTokenChallenge(type1.BasicPrivateTokenType, redemptionContext, "issuer.example", []string{}),
-			createTokenChallenge(type2.BasicPublicTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
-			createTokenChallenge(type2.BasicPublicTokenType, nil, "issuer.example", []string{"origin.example"}),
-			createTokenChallenge(type2.BasicPublicTokenType, nil, "issuer.example", []string{"foo.example,bar.example"}),
-			createTokenChallenge(type2.BasicPublicTokenType, nil, "issuer.example", []string{}),
-			createTokenChallenge(type2.BasicPublicTokenType, redemptionContext, "issuer.example", []string{}),
 			createTokenChallenge(typeF91A.BatchedPrivateTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
-			createTokenChallenge(typeF91A.BatchedPrivateTokenType, nil, "issuer.example", []string{"origin.example"}),
-			createTokenChallenge(typeF91A.BatchedPrivateTokenType, nil, "issuer.example", []string{"foo.example,bar.example"}),
-			createTokenChallenge(typeF91A.BatchedPrivateTokenType, nil, "issuer.example", []string{}),
-			createTokenChallenge(typeF91A.BatchedPrivateTokenType, redemptionContext, "issuer.example", []string{}),
+		},
+		{
+			createTokenChallenge(type1.BasicPrivateTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
+			createTokenChallenge(type2.BasicPublicTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
+			createTokenChallenge(typeF91A.BatchedPrivateTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
 		},
 	}
 
