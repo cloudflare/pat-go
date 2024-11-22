@@ -5,7 +5,8 @@ type TokenRequest interface {
 	Unmarshal(data []byte) bool
 }
 
-type TokenRequestWithTypePrefix interface {
+type TokenRequestWithDetails interface {
 	TokenRequest
+	TruncatedTokenKeyID() uint8
 	Type() uint16
 }

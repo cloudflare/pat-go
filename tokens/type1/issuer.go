@@ -66,7 +66,7 @@ func (i BasicPrivateIssuer) Evaluate(req *BasicPrivateTokenRequest) ([]byte, err
 	return tokenResponse, nil
 }
 
-func (i *BasicPrivateIssuer) Type() uint16 {
+func (i BasicPrivateIssuer) Type() uint16 {
 	return BasicPrivateTokenType
 }
 

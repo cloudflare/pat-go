@@ -54,6 +54,9 @@ if "type1-issuance" in sys.argv[1]:
     ]
     format_vector(ordered_keys, sys.argv[1])
 
+if "arbitrary-batch-issuance" in sys.argv[1]:
+    pass
+
 if "type3-origin-encryption-test-vectors.json" in sys.argv[1]:
     ordered_keys = [
         "origin_name", "kem_id", "kdf_id", "aead_id", "issuer_encap_key_seed", "issuer_encap_key", "token_type", "token_key_id", "blinded_msg", "request_key", "issuer_encap_key_id", "encrypted_token_request"

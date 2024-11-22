@@ -6,14 +6,13 @@ import (
 	"github.com/cloudflare/pat-go/tokens"
 	"github.com/cloudflare/pat-go/tokens/type1"
 	"github.com/cloudflare/pat-go/tokens/type2"
-	"github.com/cloudflare/pat-go/tokens/type3"
 	"github.com/cloudflare/pat-go/tokens/typeF91A"
 	"golang.org/x/crypto/cryptobyte"
 )
 
 type BatchedTokenRequest struct {
 	raw            []byte
-	token_requests []tokens.TokenRequestWithTypePrefix
+	token_requests []tokens.TokenRequestWithDetails
 }
 
 func (r BatchedTokenRequest) Marshal() []byte {
@@ -40,7 +39,7 @@ func (r *BatchedTokenRequest) Unmarshal(data []byte) bool {
 		return false
 	}
 
-	r.token_requests = make([]tokens.TokenRequestWithTypePrefix, token_request_count)
+	r.token_requests = make([]tokens.TokenRequestWithDetails, token_request_count)
 	for i := 0; i < int(token_request_count); i++ {
 		var token_request_length uint16
 		if !s.ReadUint16(&token_request_length) {
@@ -50,15 +49,13 @@ func (r *BatchedTokenRequest) Unmarshal(data []byte) bool {
 		if !s.ReadBytes(&token_request_data, int(token_request_length)) {
 			return false
 		}
-		var token_request tokens.TokenRequestWithTypePrefix
+		var token_request tokens.TokenRequestWithDetails
 		token_type := binary.BigEndian.Uint16(token_request_data[:2])
 		switch token_type {
 		case type1.BasicPrivateTokenType:
 			token_request = new(type1.BasicPrivateTokenRequest)
 		case type2.BasicPublicTokenType:
 			token_request = new(type2.BasicPublicTokenRequest)
-		case type3.RateLimitedTokenType:
-			token_request = new(type3.RateLimitedTokenRequest)
 		case typeF91A.BatchedPrivateTokenType:
 			token_request = new(typeF91A.BatchedPrivateTokenRequest)
 		default:

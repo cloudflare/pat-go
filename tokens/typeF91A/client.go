@@ -30,6 +30,10 @@ func (s BatchedPrivateTokenRequestState) Request() *BatchedPrivateTokenRequest {
 	return s.request
 }
 
+func (s BatchedPrivateTokenRequestState) ForTestsOnlyVerifier() *oprf.FinalizeData {
+	return s.verifier
+}
+
 func (s BatchedPrivateTokenRequestState) FinalizeTokens(tokenResponseEnc []byte) ([]tokens.Token, error) {
 	var encodedElements cryptobyte.String
 	reader := cryptobyte.String(tokenResponseEnc)
