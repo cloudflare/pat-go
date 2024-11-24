@@ -1,5 +1,6 @@
 test:
 	go test ./...
+	TYPEF91A_ISSUANCE_TEST_VECTORS_IN=typeF91A-issuance-test-vectors-rust.json go test -v -run TestVectorVerifyBatchedPrivateIssuance ./tokens/typeF91A
 
 vectors: test
 	ED25519_BLINDING_TEST_VECTORS_OUT=type3-ed25519-blinding-test-vectors.json go test -v -run TestVectorGenerateEd25519Blinding ./... 
