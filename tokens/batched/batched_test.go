@@ -25,6 +25,7 @@ import (
 )
 
 // 2048-bit RSA private key
+// nosemgrep
 const testTokenPrivateKey = `
 -----BEGIN RSA PRIVATE KEY-----
 MIIEowIBAAKCAQEAyxrta2qV9bHOATpM/KsluUsuZKIwNOQlCn6rQ8DfOowSmTrx
