@@ -15,7 +15,7 @@ func UnmarshalBatchedTokenResponses(data []byte) ([][]byte, error) {
 		return nil, fmt.Errorf("invalid Tokens encoding")
 	}
 
-	respTokens := make([][]byte, 0)
+	var respTokens [][]byte
 	for i := uint16(0); !token_requests.Empty(); i++ {
 		var token_request cryptobyte.String
 		if !token_requests.ReadUint16LengthPrefixed(&token_request) {
