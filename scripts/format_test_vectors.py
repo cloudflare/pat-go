@@ -19,6 +19,8 @@ def format_vector(vector_keys, vector_fname):
                         continue
                     if type(entry[key]) == type(""):
                         formatted = formatted + wrap_line(key + ": " + str(entry[key])) + "\n"
+                    elif type(entry[key] == type({})):
+                        formatted = formatted + wrap_line(key + ": " + json.dumps(entry[key])) + "\n"
                     else:
                         formatted = formatted + wrap_line(key + ": " + str(",".join(entry[key]))) + "\n"
             formatted = formatted + "\n"
@@ -51,6 +53,12 @@ if "typeF91A-issuance" in sys.argv[1]:
 if "type1-issuance" in sys.argv[1]:
     ordered_keys = [
         "skS", "pkS", "token_challenge", "nonce", "blind", "token_request", "token_response", "token"
+    ]
+    format_vector(ordered_keys, sys.argv[1])
+
+if "batched-issuance-test-vectors.json" in sys.argv[1]:
+    ordered_keys = [
+        "issuance", "token_request", "token_response"
     ]
     format_vector(ordered_keys, sys.argv[1])
 

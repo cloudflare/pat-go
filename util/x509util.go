@@ -158,6 +158,15 @@ func MustUnmarshalPrivateOPRFKey(data []byte) *oprf.PrivateKey {
 	return key
 }
 
+func MustUnmarshalBatchedPrivateOPRFKey(data []byte) *oprf.PrivateKey {
+	key := new(oprf.PrivateKey)
+	err := key.UnmarshalBinary(oprf.SuiteRistretto255, data)
+	if err != nil {
+		panic(err)
+	}
+	return key
+}
+
 func MustMarshalPublicOPRFKey(key *oprf.PublicKey) []byte {
 	encodedKey, err := key.MarshalBinary()
 	if err != nil {
@@ -169,6 +178,15 @@ func MustMarshalPublicOPRFKey(key *oprf.PublicKey) []byte {
 func MustUnmarshalPublicOPRFKey(data []byte) *oprf.PublicKey {
 	key := new(oprf.PublicKey)
 	err := key.UnmarshalBinary(oprf.SuiteP384, data)
+	if err != nil {
+		panic(err)
+	}
+	return key
+}
+
+func MustUnmarshalBatchedPublicOPRFKey(data []byte) *oprf.PublicKey {
+	key := new(oprf.PublicKey)
+	err := key.UnmarshalBinary(oprf.SuiteRistretto255, data)
 	if err != nil {
 		panic(err)
 	}

@@ -26,8 +26,24 @@ func MustUnhex(t *testing.T, h string) []byte {
 	return out
 }
 
+func MustUnhexList(t *testing.T, h []string) [][]byte {
+	out := make([][]byte, len(h))
+	for i := 0; i < len(h); i++ {
+		out[i] = MustUnhex(t, h[i])
+	}
+	return out
+}
+
 func MustHex(d []byte) string {
 	return hex.EncodeToString(d)
+}
+
+func MustHexList(d [][]byte) []string {
+	hexValues := make([]string, len(d))
+	for i := 0; i < len(d); i++ {
+		hexValues[i] = hex.EncodeToString(d[i])
+	}
+	return hexValues
 }
 
 func MustMarshalPrivateKey(key *rsa.PrivateKey) []byte {

@@ -52,7 +52,7 @@ Yg0f1rCxEAQo5BVppiQFp0FA7W52DUnMEfBtiehZ6xArW7crO91gFRqKBWZ3Jjyz
 /JcS8m5UgQxC8mmb/2wLD5TDvWw+XCfjUgWmvqIi5dcJgmuTAn5X
 -----END RSA PRIVATE KEY-----`
 
-func loadPrivateKey(t *testing.T) *rsa.PrivateKey {
+func loadPrivateKey(t testing.TB) *rsa.PrivateKey {
 	block, _ := pem.Decode([]byte(testTokenPrivateKey))
 	if block == nil || block.Type != "RSA PRIVATE KEY" {
 		t.Fatal("PEM private key decoding failed")
@@ -61,20 +61,6 @@ func loadPrivateKey(t *testing.T) *rsa.PrivateKey {
 	privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	return privateKey
-}
-
-func loadPrivateKeyForBenchmark(b *testing.B) *rsa.PrivateKey {
-	block, _ := pem.Decode([]byte(testTokenPrivateKey))
-	if block == nil || block.Type != "RSA PRIVATE KEY" {
-		b.Fatal("PEM private key decoding failed")
-	}
-
-	privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-	if err != nil {
-		b.Fatal(err)
 	}
 
 	return privateKey
@@ -367,7 +353,7 @@ func TestVectorVerifyBasicIssuance(t *testing.T) {
 }
 
 func BenchmarkPublicTokenRoundTrip(b *testing.B) {
-	tokenKey := loadPrivateKeyForBenchmark(b)
+	tokenKey := loadPrivateKey(b)
 	issuer := NewBasicPublicIssuer(tokenKey)
 
 	client := BasicPublicClient{}

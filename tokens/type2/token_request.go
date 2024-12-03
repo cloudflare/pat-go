@@ -16,7 +16,11 @@ type BasicPublicTokenRequest struct {
 	BlindedReq []byte // 256 bytes
 }
 
-func (r BasicPublicTokenRequest) Type() uint16 {
+func (r *BasicPublicTokenRequest) TruncatedTokenKeyID() uint8 {
+	return r.TokenKeyID
+}
+
+func (r *BasicPublicTokenRequest) Type() uint16 {
 	return BasicPublicTokenType
 }
 
