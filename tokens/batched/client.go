@@ -39,6 +39,8 @@ func (c BatchedClient) CreateTokenRequest(tokenRequests []tokens.TokenRequestWit
 			if !ok || casted.Type() != typeF91A.BatchedPrivateTokenType {
 				return nil, fmt.Errorf("invalid token request type")
 			}
+		default:
+			return nil, fmt.Errorf("unknown token type %d", tokenRequest.Type())
 		}
 	}
 
