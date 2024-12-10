@@ -11,7 +11,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -992,7 +991,7 @@ func TestVectorGenerateBatchedIssuance(t *testing.T) {
 
 	var outputFile string
 	if outputFile = os.Getenv(outputBatchedIssuanceTestVectorEnvironmentKey); len(outputFile) > 0 {
-		err := ioutil.WriteFile(outputFile, encoded, 0644)
+		err := os.WriteFile(outputFile, encoded, 0644)
 		if err != nil {
 			t.Fatalf("Error writing test vectors: %v", err)
 		}
@@ -1005,7 +1004,7 @@ func TestVectorVerifyBatchedIssuance(t *testing.T) {
 		t.Skip("Test vectors were not provided")
 	}
 
-	encoded, err := ioutil.ReadFile(inputFile)
+	encoded, err := os.ReadFile(inputFile)
 	if err != nil {
 		t.Fatalf("Failed reading test vectors: %v", err)
 	}
