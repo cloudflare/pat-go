@@ -9,24 +9,20 @@ import (
 func UnmarshalBatchedTokenResponses(data []byte) ([][]byte, error) {
 	s := cryptobyte.String(data)
 
-	var token_requests cryptobyte.String
+	var token_responses_string cryptobyte.String
 
-	if !s.ReadUint16LengthPrefixed(&token_requests) {
+	if !s.ReadUint16LengthPrefixed(&token_responses_string) {
 		return nil, fmt.Errorf("invalid Tokens encoding")
 	}
 
-	var respTokens [][]byte
-	for i := uint16(0); !token_requests.Empty(); i++ {
-		var token_request cryptobyte.String
-		if !token_requests.ReadUint16LengthPrefixed(&token_request) {
+	var token_responses [][]byte
+	for !token_responses_string.Empty() {
+		var token_response cryptobyte.String
+		if !token_responses_string.ReadUint16LengthPrefixed(&token_response) {
 			return nil, fmt.Errorf("invalid Token encoding")
 		}
-		bytes := make([]byte, len(token_request))
-		if !token_request.CopyBytes(bytes) {
-			return nil, fmt.Errorf("error while copying")
-		}
-		respTokens = append(respTokens, bytes)
+		token_responses = append(token_responses, []byte(token_response))
 	}
 
-	return respTokens, nil
+	return token_responses, nil
 }
