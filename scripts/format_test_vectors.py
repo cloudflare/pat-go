@@ -2,8 +2,10 @@ import sys
 import json
 import textwrap
 
-def wrap_line(value):
-    return textwrap.fill(value, width=65)
+DEFAULT_WIDTH = 65
+
+def wrap_line(value, width=DEFAULT_WIDTH):
+    return textwrap.fill(value, width)
 
 def format_vector_keys(vector_keys, entry, indent_level = 0, is_array_element = False):
     indent = "  " * indent_level
@@ -23,18 +25,22 @@ def format_vector_keys(vector_keys, entry, indent_level = 0, is_array_element = 
             if key == "comment":
                 continue
             if type(entry[key]) == type(""):
-                formatted += indent + array_indent + key + ": " + str(entry[key]) + "\n"
-            # elif type(entry[key] == type({})):
-            #     formatted += format_vector_keys(key, entry[key], indent_level + 1)
+                initial_indent = indent + array_indent
+                f = wrap_line(key + ": " + str(entry[key]), DEFAULT_WIDTH-len(initial_indent))
+                formatted += "\n".join(f"{initial_indent}{line}" for line in f.splitlines()) + "\n"
             elif type(entry[key] == type([])):
                 formatted += indent + array_indent + key + ":\n"
                 off_indent = ""
                 if array_indent != "":
                     off_indent = "  "
+                initial_indent = indent + off_indent + "  "
                 for e in entry[key]:
-                    formatted += indent + off_indent + "  - " + e + "\n"
+                    f = wrap_line("- " + e, DEFAULT_WIDTH-len(initial_indent))
+                    formatted += "\n".join(f"{initial_indent}{line}" for line in f.splitlines()) + "\n"
             else:
-                formatted += indent + array_indent + key + ": " + str(",".join(entry[key])) + "\n"
+                initial_indent = indent + array_indent
+                f = wrap_line(key + ": " + str(",".join(entry[key])), DEFAULT_WIDTH-len(initial_indent))
+                formatted += "\n".join(f"{initial_indent}{line}" for line in f.splitlines()) + "\n"
             
             if array_indent != "":
                 array_indent = "  "
