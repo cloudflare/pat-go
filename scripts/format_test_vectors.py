@@ -5,25 +5,49 @@ import textwrap
 def wrap_line(value):
     return textwrap.fill(value, width=65)
 
+def format_vector_keys(vector_keys, entry, indent_level = 0, is_array_element = False):
+    indent = "  " * indent_level
+    array_indent = "- " if is_array_element else ""
+    formatted = ""
+    if "comment" in vector_keys:
+        formatted += indent + entry["comment"] + "\n"
+    for key in vector_keys:
+        if type(key) == type(()):
+            formatted += key[0] + ":\n"
+            if type(entry[key[0]]) == type([]):
+                for e in entry[key[0]]:
+                    formatted += format_vector_keys(key[1], e, indent_level + 1, True)
+            else:
+                formatted += format_vector_keys(key[1], entry[key[0]], indent_level + 1)
+        elif key in entry:
+            if key == "comment":
+                continue
+            if type(entry[key]) == type(""):
+                formatted += indent + array_indent + key + ": " + str(entry[key]) + "\n"
+            # elif type(entry[key] == type({})):
+            #     formatted += format_vector_keys(key, entry[key], indent_level + 1)
+            elif type(entry[key] == type([])):
+                formatted += indent + array_indent + key + ":\n"
+                off_indent = ""
+                if array_indent != "":
+                    off_indent = "  "
+                for e in entry[key]:
+                    formatted += indent + off_indent + "  - " + e + "\n"
+            else:
+                formatted += indent + array_indent + key + ": " + str(",".join(entry[key])) + "\n"
+            
+            if array_indent != "":
+                array_indent = "  "
+    return formatted
+
 def format_vector(vector_keys, vector_fname):
     with open(vector_fname, "r") as fh:
         data = json.load(fh)
         formatted = "~~~\n"
         for i, entry in enumerate(data):
-            formatted = formatted + ("// Test vector %d:" % (i+1)) + "\n"
-            if "comment" in vector_keys:
-                formatted += entry["comment"] + "\n"
-            for key in vector_keys:
-                if key in entry:
-                    if key == "comment":
-                        continue
-                    if type(entry[key]) == type(""):
-                        formatted = formatted + wrap_line(key + ": " + str(entry[key])) + "\n"
-                    elif type(entry[key] == type({})):
-                        formatted = formatted + wrap_line(key + ": " + json.dumps(entry[key])) + "\n"
-                    else:
-                        formatted = formatted + wrap_line(key + ": " + str(",".join(entry[key]))) + "\n"
-            formatted = formatted + "\n"
+            formatted += ("// Test vector %d:" % (i+1)) + "\n"
+            formatted += format_vector_keys(vector_keys, entry)
+            formatted += "\n"
         print(formatted + "~~~\n")
 
 if "type3-ed25519-blinding" in sys.argv[1]:
@@ -58,7 +82,9 @@ if "type1-issuance" in sys.argv[1]:
 
 if "batched-issuance-test-vectors.json" in sys.argv[1]:
     ordered_keys = [
-        "issuance", "token_request", "token_response"
+        ("issuance", ["type", "skS", "pkS", "token_challenge", "nonce", "nonces", "blind", "blinds", "token", "tokens"]),
+        "token_request",
+        "token_response",
     ]
     format_vector(ordered_keys, sys.argv[1])
 
