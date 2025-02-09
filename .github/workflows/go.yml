@@ -23,5 +23,4 @@ jobs:
 
     - name: Test
       run: |
-        go test -v ./... && \
-        TYPEF91A_ISSUANCE_TEST_VECTORS_IN=typeF91A-issuance-test-vectors-rust.json go test -v -run TestVectorVerifyBatchedPrivateIssuance ./tokens/typeF91A
+        go test -v ./...

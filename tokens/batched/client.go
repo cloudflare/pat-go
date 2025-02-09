@@ -6,7 +6,7 @@ import (
 	"github.com/cloudflare/pat-go/tokens"
 	"github.com/cloudflare/pat-go/tokens/type1"
 	"github.com/cloudflare/pat-go/tokens/type2"
-	"github.com/cloudflare/pat-go/tokens/typeF91A"
+	"github.com/cloudflare/pat-go/tokens/type5"
 )
 
 type BatchedClient struct {
@@ -34,9 +34,9 @@ func (c BatchedClient) CreateTokenRequest(tokenRequests []tokens.TokenRequestWit
 			if !ok || casted.Type() != type2.BasicPublicTokenType {
 				return nil, fmt.Errorf("invalid token request type")
 			}
-		case typeF91A.BatchedPrivateTokenType:
-			casted, ok := tokenRequest.(*typeF91A.BatchedPrivateTokenRequest)
-			if !ok || casted.Type() != typeF91A.BatchedPrivateTokenType {
+		case type5.BatchedPrivateTokenType:
+			casted, ok := tokenRequest.(*type5.BatchedPrivateTokenRequest)
+			if !ok || casted.Type() != type5.BatchedPrivateTokenType {
 				return nil, fmt.Errorf("invalid token request type")
 			}
 		default:
