@@ -1,4 +1,4 @@
-package typeF91A
+package type5
 
 import (
 	"bytes"

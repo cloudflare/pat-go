@@ -1,4 +1,4 @@
-package typeF91A
+package type5
 
 import (
 	"bytes"
@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	outputBatchedPrivateIssuanceTestVectorEnvironmentKey = "TYPEF91A_ISSUANCE_TEST_VECTORS_OUT"
-	inputBatchedPrivateIssuanceTestVectorEnvironmentKey  = "TYPEF91A_ISSUANCE_TEST_VECTORS_IN"
+	outputBatchedPrivateIssuanceTestVectorEnvironmentKey = "TYPE5_ISSUANCE_TEST_VECTORS_OUT"
+	inputBatchedPrivateIssuanceTestVectorEnvironmentKey  = "TYPE5_ISSUANCE_TEST_VECTORS_IN"
 )
 
 func createTokenChallenge(tokenType uint16, redemptionContext []byte, issuerName string, originInfo []string) tokens.TokenChallenge {

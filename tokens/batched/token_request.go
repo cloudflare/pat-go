@@ -6,7 +6,7 @@ import (
 	"github.com/cloudflare/pat-go/tokens"
 	"github.com/cloudflare/pat-go/tokens/type1"
 	"github.com/cloudflare/pat-go/tokens/type2"
-	"github.com/cloudflare/pat-go/tokens/typeF91A"
+	"github.com/cloudflare/pat-go/tokens/type5"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -56,8 +56,8 @@ func (r *BatchedTokenRequest) Unmarshal(data []byte) bool {
 			token_request = new(type1.BasicPrivateTokenRequest)
 		case type2.BasicPublicTokenType:
 			token_request = new(type2.BasicPublicTokenRequest)
-		case typeF91A.BatchedPrivateTokenType:
-			token_request = new(typeF91A.BatchedPrivateTokenRequest)
+		case type5.BatchedPrivateTokenType:
+			token_request = new(type5.BatchedPrivateTokenRequest)
 		default:
 			return false
 		}

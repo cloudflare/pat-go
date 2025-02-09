@@ -1,4 +1,4 @@
-package typeF91A
+package type5
 
 import (
 	"bytes"
@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	BatchedPrivateTokenType = uint16(0xF91A)
+	BatchedPrivateTokenType = uint16(0x0005)
 )
 
 type BatchedPrivateTokenRequest struct {
