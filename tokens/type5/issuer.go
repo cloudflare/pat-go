@@ -8,6 +8,7 @@ import (
 	"github.com/cloudflare/circl/group"
 	"github.com/cloudflare/circl/oprf"
 	"github.com/cloudflare/pat-go/tokens"
+	"github.com/quic-go/quic-go/quicvarint"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -76,12 +77,17 @@ func (i BatchedPrivateIssuer) Evaluate(req *BatchedPrivateTokenRequest) ([]byte,
 		return nil, err
 	}
 
+	// Build RFC 9000 varint
+	bElmts := cryptobyte.NewBuilder(nil)
+	for i := 0; i < numRequests; i++ {
+		bElmts.AddBytes(encodedElements[i])
+	}
+	rawBElmts := bElmts.BytesOrPanic()
+	l := quicvarint.Append([]byte{}, uint64(len(rawBElmts)))
+
 	b := cryptobyte.NewBuilder(nil)
-	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-		for i := 0; i < numRequests; i++ {
-			b.AddBytes(encodedElements[i])
-		}
-	})
+	b.AddBytes(l)
+	b.AddBytes(rawBElmts)
 	b.AddBytes(encProof)
 
 	return b.BytesOrPanic(), nil
