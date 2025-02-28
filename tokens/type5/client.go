@@ -8,6 +8,7 @@ import (
 	"github.com/cloudflare/circl/oprf"
 	"github.com/cloudflare/circl/zk/dleq"
 	"github.com/cloudflare/pat-go/tokens"
+	"github.com/quic-go/quic-go/quicvarint"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -35,9 +36,16 @@ func (s BatchedPrivateTokenRequestState) ForTestsOnlyVerifier() *oprf.FinalizeDa
 }
 
 func (s BatchedPrivateTokenRequestState) FinalizeTokens(tokenResponseEnc []byte) ([]tokens.Token, error) {
-	var encodedElements cryptobyte.String
 	reader := cryptobyte.String(tokenResponseEnc)
-	if !reader.ReadUint16LengthPrefixed(&encodedElements) || encodedElements.Empty() {
+
+	l, offset, err := quicvarint.Parse(tokenResponseEnc)
+	if err != nil {
+		return nil, err
+	}
+	reader.Skip(offset)
+
+	encodedElements := make([]byte, l)
+	if !reader.ReadBytes(&encodedElements, len(encodedElements)) {
 		return nil, fmt.Errorf("invalid batch token response list encoding")
 	}
 
@@ -66,7 +74,7 @@ func (s BatchedPrivateTokenRequestState) FinalizeTokens(tokenResponseEnc []byte)
 	}
 
 	proof := new(dleq.Proof)
-	err := proof.UnmarshalBinary(group.Ristretto255, proofEnc)
+	err = proof.UnmarshalBinary(group.Ristretto255, proofEnc)
 	if err != nil {
 		return nil, err
 	}

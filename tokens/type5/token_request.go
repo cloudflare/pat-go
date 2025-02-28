@@ -3,6 +3,7 @@ package type5
 import (
 	"bytes"
 
+	"github.com/quic-go/quic-go/quicvarint"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -46,11 +47,17 @@ func (r *BatchedPrivateTokenRequest) Marshal() []byte {
 	b := cryptobyte.NewBuilder(nil)
 	b.AddUint16(BatchedPrivateTokenType)
 	b.AddUint8(r.TokenKeyID)
-	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-		for i := 0; i < len(r.BlindedReq); i++ {
-			b.AddBytes(r.BlindedReq[i])
-		}
-	})
+
+	bElmts := cryptobyte.NewBuilder(nil)
+	for i := 0; i < len(r.BlindedReq); i++ {
+		bElmts.AddBytes(r.BlindedReq[i])
+	}
+
+	rawBElements := bElmts.BytesOrPanic()
+	l := quicvarint.Append([]byte{}, uint64(len(rawBElements)))
+
+	b.AddBytes(l)
+	b.AddBytes(rawBElements)
 
 	r.raw = b.BytesOrPanic()
 	return r.raw
@@ -66,8 +73,19 @@ func (r *BatchedPrivateTokenRequest) Unmarshal(data []byte) bool {
 		return false
 	}
 
-	var blindedRequests cryptobyte.String
-	if !s.ReadUint16LengthPrefixed(&blindedRequests) || blindedRequests.Empty() {
+	// At most, a quic varint is 4 byte long. copy them to read the length
+	pL := make([]byte, 4)
+	if !s.CopyBytes(pL) {
+		return false
+	}
+
+	l, offset, err := quicvarint.Parse(pL)
+	if err != nil {
+		return false
+	}
+	s.Skip(offset)
+	blindedRequests := make([]byte, l)
+	if !s.ReadBytes(&blindedRequests, len(blindedRequests)) {
 		return false
 	}
 	if len(blindedRequests)%32 != 0 {
