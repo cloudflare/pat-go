@@ -7,6 +7,7 @@ import (
 	"github.com/cloudflare/pat-go/tokens/type1"
 	"github.com/cloudflare/pat-go/tokens/type2"
 	"github.com/cloudflare/pat-go/tokens/type5"
+	"github.com/quic-go/quic-go/quicvarint"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -20,12 +21,17 @@ func (r BatchedTokenRequest) Marshal() []byte {
 		return r.raw
 	}
 
+	bReqs := cryptobyte.NewBuilder(nil)
+	for _, token_request := range r.token_requests {
+		bReqs.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) { b.AddBytes(token_request.Marshal()) })
+	}
+
+	rawBReqs := bReqs.BytesOrPanic()
+	l := quicvarint.Append([]byte{}, uint64(len(rawBReqs)))
+
 	b := cryptobyte.NewBuilder(nil)
-	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-		for _, token_request := range r.token_requests {
-			b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) { b.AddBytes(token_request.Marshal()) })
-		}
-	})
+	b.AddBytes(l)
+	b.AddBytes(rawBReqs)
 
 	r.raw = b.BytesOrPanic()
 	return r.raw
@@ -34,13 +40,21 @@ func (r BatchedTokenRequest) Marshal() []byte {
 func (r *BatchedTokenRequest) Unmarshal(data []byte) bool {
 	s := cryptobyte.String(data)
 
-	var token_request_count uint16
-	if !s.ReadUint16(&token_request_count) {
+	// At most, a quic varint is 4 byte long. copy them to read the length
+	pL := make([]byte, 4)
+	if !s.CopyBytes(pL) {
 		return false
 	}
 
-	r.token_requests = make([]tokens.TokenRequestWithDetails, token_request_count)
-	for i := 0; i < int(token_request_count); i++ {
+	l, offset, err := quicvarint.Parse(pL)
+	if err != nil {
+		return false
+	}
+	s.Skip(offset)
+
+	r.token_requests = make([]tokens.TokenRequestWithDetails, 0)
+	i := 0
+	for i < int(l) {
 		var token_request_length uint16
 		if !s.ReadUint16(&token_request_length) {
 			return false
@@ -49,6 +63,7 @@ func (r *BatchedTokenRequest) Unmarshal(data []byte) bool {
 		if !s.ReadBytes(&token_request_data, int(token_request_length)) {
 			return false
 		}
+		i += 2 + len(token_request_data)
 		var token_request tokens.TokenRequestWithDetails
 		token_type := binary.BigEndian.Uint16(token_request_data[:2])
 		switch token_type {
@@ -64,7 +79,7 @@ func (r *BatchedTokenRequest) Unmarshal(data []byte) bool {
 		if !token_request.Unmarshal(token_request_data) {
 			return false
 		}
-		r.token_requests[i] = token_request
+		r.token_requests = append(r.token_requests, token_request)
 	}
 
 	return true

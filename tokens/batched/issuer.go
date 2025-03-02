@@ -2,6 +2,7 @@ package batched
 
 import (
 	"github.com/cloudflare/pat-go/tokens"
+	"github.com/quic-go/quic-go/quicvarint"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -65,12 +66,17 @@ func (i BasicBatchedIssuer) EvaluateBatch(req *BatchedTokenRequest) ([]byte, err
 		}
 	}
 
+	// Build RFC 9000 varint
+	bResps := cryptobyte.NewBuilder(nil)
+	for _, response := range responses {
+		bResps.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) { b.AddBytes(response) })
+	}
+	rawBResps := bResps.BytesOrPanic()
+	l := quicvarint.Append([]byte{}, uint64(len(rawBResps)))
+
 	b := cryptobyte.NewBuilder(nil)
-	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
-		for _, resp := range responses {
-			b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) { b.AddBytes(resp) })
-		}
-	})
+	b.AddBytes(l)
+	b.AddBytes(rawBResps)
 
 	return b.Bytes()
 }
