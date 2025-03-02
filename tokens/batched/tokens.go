@@ -3,17 +3,25 @@ package batched
 import (
 	"fmt"
 
+	"github.com/quic-go/quic-go/quicvarint"
 	"golang.org/x/crypto/cryptobyte"
 )
 
 func UnmarshalBatchedTokenResponses(data []byte) ([][]byte, error) {
 	s := cryptobyte.String(data)
 
-	var token_responses_string cryptobyte.String
+	// At most, a quic varint is 4 byte long. copy them to read the length
+	pL := data[:4]
 
-	if !s.ReadUint16LengthPrefixed(&token_responses_string) {
-		return nil, fmt.Errorf("invalid Tokens encoding")
+	l, offset, err := quicvarint.Parse(pL)
+	if err != nil {
+		return nil, err
 	}
+	s.Skip(offset)
+
+	token_responses_data := data[offset:(offset + int(l))]
+
+	token_responses_string := cryptobyte.String(token_responses_data)
 
 	var token_responses [][]byte
 	for !token_responses_string.Empty() {
