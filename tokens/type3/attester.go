@@ -48,7 +48,7 @@ func unmarshalPublicKey(curve elliptic.Curve, encodedKey []byte) (*ecdsa.PublicK
 		return nil, fmt.Errorf("invalid public key")
 	}
 	publicKey := &ecdsa.PublicKey{
-		curve, x, y,
+		Curve: curve, X: x, Y: y,
 	}
 	return publicKey, nil
 }

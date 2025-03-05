@@ -6,23 +6,34 @@ import (
 	"testing"
 
 	"github.com/cloudflare/pat-go/ecdsa"
+	"github.com/cloudflare/pat-go/util"
 )
 
 func TestRequestMarshal(t *testing.T) {
+	var err error
 	issuer := NewRateLimitedIssuer(loadPrivateKey(t))
 	testOrigin := "origin.example"
-	issuer.AddOrigin(testOrigin)
+	err = issuer.AddOrigin(testOrigin)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	curve := elliptic.P384()
 	secretKey, err := ecdsa.GenerateKey(curve, rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
 	blindKey, err := ecdsa.GenerateKey(curve, rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
 	client := NewRateLimitedClientFromSecret(secretKey.D.Bytes())
 
 	challenge := make([]byte, 32)
-	rand.Reader.Read(challenge)
+	util.MustRead(t, rand.Reader, challenge)
 
 	nonce := make([]byte, 32)
-	rand.Reader.Read(nonce)
+	util.MustRead(t, rand.Reader, nonce)
 
 	tokenKeyID := issuer.TokenKeyID()
 	tokenPublicKey := issuer.TokenKey()

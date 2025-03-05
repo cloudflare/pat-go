@@ -69,9 +69,5 @@ func (r *RateLimitedTokenRequest) Unmarshal(data []byte) bool {
 	copy(r.EncryptedTokenRequest, encryptedTokenRequest)
 
 	s.ReadBytes(&r.Signature, 96)
-	if !s.Empty() {
-		return false
-	}
-
-	return true
+	return s.Empty()
 }
