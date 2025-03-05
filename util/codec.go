@@ -4,6 +4,7 @@ import (
 	"crypto/rsa"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"testing"
 )
 
@@ -18,6 +19,11 @@ func fatalOnError(t *testing.T, err error, msg string) {
 			panic(realMsg)
 		}
 	}
+}
+
+func MustRead(t *testing.T, r io.Reader, b []byte) {
+	_, err := r.Read(b)
+	fatalOnError(t, err, "read failed")
 }
 
 func MustUnhex(t *testing.T, h string) []byte {
