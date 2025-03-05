@@ -3,7 +3,7 @@ package type5
 import (
 	"bytes"
 
-	"github.com/quic-go/quic-go/quicvarint"
+	"github.com/cloudflare/pat-go/quicwire"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -54,7 +54,7 @@ func (r *BatchedPrivateTokenRequest) Marshal() []byte {
 	}
 
 	rawBElements := bElmts.BytesOrPanic()
-	l := quicvarint.Append([]byte{}, uint64(len(rawBElements)))
+	l := quicwire.AppendVarint([]byte{}, uint64(len(rawBElements)))
 
 	b.AddBytes(l)
 	b.AddBytes(rawBElements)
@@ -73,16 +73,7 @@ func (r *BatchedPrivateTokenRequest) Unmarshal(data []byte) bool {
 		return false
 	}
 
-	// At most, a quic varint is 4 byte long. copy them to read the length
-	pL := make([]byte, 4)
-	if !s.CopyBytes(pL) {
-		return false
-	}
-
-	l, offset, err := quicvarint.Parse(pL)
-	if err != nil {
-		return false
-	}
+	l, offset := quicwire.ConsumeVarint(data[3:])
 	s.Skip(offset)
 	blindedRequests := make([]byte, l)
 	if !s.ReadBytes(&blindedRequests, len(blindedRequests)) {

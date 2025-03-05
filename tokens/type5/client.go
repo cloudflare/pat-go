@@ -7,8 +7,8 @@ import (
 	"github.com/cloudflare/circl/group"
 	"github.com/cloudflare/circl/oprf"
 	"github.com/cloudflare/circl/zk/dleq"
+	"github.com/cloudflare/pat-go/quicwire"
 	"github.com/cloudflare/pat-go/tokens"
-	"github.com/quic-go/quic-go/quicvarint"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -38,10 +38,7 @@ func (s BatchedPrivateTokenRequestState) ForTestsOnlyVerifier() *oprf.FinalizeDa
 func (s BatchedPrivateTokenRequestState) FinalizeTokens(tokenResponseEnc []byte) ([]tokens.Token, error) {
 	reader := cryptobyte.String(tokenResponseEnc)
 
-	l, offset, err := quicvarint.Parse(tokenResponseEnc)
-	if err != nil {
-		return nil, err
-	}
+	l, offset := quicwire.ConsumeVarint(tokenResponseEnc)
 	reader.Skip(offset)
 
 	encodedElements := make([]byte, l)
@@ -74,7 +71,7 @@ func (s BatchedPrivateTokenRequestState) FinalizeTokens(tokenResponseEnc []byte)
 	}
 
 	proof := new(dleq.Proof)
-	err = proof.UnmarshalBinary(group.Ristretto255, proofEnc)
+	err := proof.UnmarshalBinary(group.Ristretto255, proofEnc)
 	if err != nil {
 		return nil, err
 	}
