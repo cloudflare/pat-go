@@ -6,9 +6,7 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 )
 
-var (
-	RateLimitedTokenType = uint16(0x0003)
-)
+const RateLimitedTokenType = uint16(0x0003)
 
 // https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#section-5.3
 type RateLimitedTokenRequest struct {
