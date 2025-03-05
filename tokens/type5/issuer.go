@@ -7,8 +7,8 @@ import (
 
 	"github.com/cloudflare/circl/group"
 	"github.com/cloudflare/circl/oprf"
+	"github.com/cloudflare/pat-go/quicwire"
 	"github.com/cloudflare/pat-go/tokens"
-	"github.com/quic-go/quic-go/quicvarint"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -83,7 +83,7 @@ func (i BatchedPrivateIssuer) Evaluate(req *BatchedPrivateTokenRequest) ([]byte,
 		bElmts.AddBytes(encodedElements[i])
 	}
 	rawBElmts := bElmts.BytesOrPanic()
-	l := quicvarint.Append([]byte{}, uint64(len(rawBElmts)))
+	l := quicwire.AppendVarint([]byte{}, uint64(len(rawBElmts)))
 
 	b := cryptobyte.NewBuilder(nil)
 	b.AddBytes(l)

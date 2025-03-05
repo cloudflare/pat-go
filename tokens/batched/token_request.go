@@ -3,11 +3,11 @@ package batched
 import (
 	"encoding/binary"
 
+	"github.com/cloudflare/pat-go/quicwire"
 	"github.com/cloudflare/pat-go/tokens"
 	"github.com/cloudflare/pat-go/tokens/type1"
 	"github.com/cloudflare/pat-go/tokens/type2"
 	"github.com/cloudflare/pat-go/tokens/type5"
-	"github.com/quic-go/quic-go/quicvarint"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -27,7 +27,7 @@ func (r BatchedTokenRequest) Marshal() []byte {
 	}
 
 	rawBReqs := bReqs.BytesOrPanic()
-	l := quicvarint.Append([]byte{}, uint64(len(rawBReqs)))
+	l := quicwire.AppendVarint([]byte{}, uint64(len(rawBReqs)))
 
 	b := cryptobyte.NewBuilder(nil)
 	b.AddBytes(l)
@@ -41,15 +41,11 @@ func (r *BatchedTokenRequest) Unmarshal(data []byte) bool {
 	s := cryptobyte.String(data)
 
 	// At most, a quic varint is 4 byte long. copy them to read the length
-	pL := make([]byte, 4)
-	if !s.CopyBytes(pL) {
+	if len(data) < 4 {
 		return false
 	}
 
-	l, offset, err := quicvarint.Parse(pL)
-	if err != nil {
-		return false
-	}
+	l, offset := quicwire.ConsumeVarint(data)
 	s.Skip(offset)
 
 	r.token_requests = make([]tokens.TokenRequestWithDetails, 0)
