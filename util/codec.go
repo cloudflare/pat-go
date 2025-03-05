@@ -10,18 +10,18 @@ import (
 
 // /////
 // Infallible Serialize / Deserialize
-func fatalOnError(t *testing.T, err error, msg string) {
+func fatalOnError(t testing.TB, err error, msg string) {
 	realMsg := fmt.Sprintf("%s: %v", msg, err)
 	if err != nil {
 		if t != nil {
-			t.Fatalf(realMsg)
+			t.Fatal(realMsg)
 		} else {
 			panic(realMsg)
 		}
 	}
 }
 
-func MustRead(t *testing.T, r io.Reader, b []byte) {
+func MustRead(t testing.TB, r io.Reader, b []byte) {
 	_, err := r.Read(b)
 	fatalOnError(t, err, "read failed")
 }
