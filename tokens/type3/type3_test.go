@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -22,6 +21,7 @@ import (
 
 	"github.com/cloudflare/pat-go/ecdsa"
 	"github.com/cloudflare/pat-go/ed25519"
+	"github.com/cloudflare/pat-go/util"
 )
 
 // 2048-bit RSA private key
@@ -116,13 +116,13 @@ func TestSignatureDifferences(t *testing.T) {
 	}
 
 	message := make([]byte, 32)
-	rand.Reader.Read(message)
+	util.MustRead(t, rand.Reader, message)
 
 	blind := make([]byte, 32)
-	rand.Reader.Read(blind)
+	util.MustRead(t, rand.Reader, blind)
 	signature1 := ed25519.BlindKeySign(secretKey, message, blind)
 
-	rand.Reader.Read(blind)
+	util.MustRead(t, rand.Reader, blind)
 	signature2 := ed25519.BlindKeySign(secretKey, message, blind)
 
 	if bytes.Equal(signature1[:32], signature2[:32]) {
@@ -136,22 +136,31 @@ func TestSignatureDifferences(t *testing.T) {
 func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 	issuer := NewRateLimitedIssuer(loadPrivateKey(t))
 	testOrigin := "origin.example"
-	issuer.AddOrigin(testOrigin)
+	err := issuer.AddOrigin(testOrigin)
+	if err != nil {
+		t.Error(err)
+	}
 
 	curve := elliptic.P384()
 	clientSecretKey, err := ecdsa.GenerateKey(curve, rand.Reader)
+	if err != nil {
+		t.Error(err)
+	}
 	requestKey, err := ecdsa.GenerateKey(curve, rand.Reader)
+	if err != nil {
+		t.Error(err)
+	}
 	client := NewRateLimitedClientFromSecret(clientSecretKey.D.Bytes())
 	attester := NewRateLimitedAttester(NewMemoryClientStateCache())
 
 	challenge := make([]byte, 32)
-	rand.Reader.Read(challenge)
+	util.MustRead(t, rand.Reader, challenge)
 
 	anonymousOriginID := make([]byte, 32)
-	rand.Reader.Read(anonymousOriginID)
+	util.MustRead(t, rand.Reader, anonymousOriginID)
 
 	nonce := make([]byte, 32)
-	rand.Reader.Read(nonce)
+	util.MustRead(t, rand.Reader, nonce)
 
 	tokenKeyID := issuer.TokenKeyID()
 	tokenPublicKey := issuer.TokenKey()
@@ -234,22 +243,34 @@ func TestRateLimitedIssuerOriginRepeatFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	issuer.AddOriginWithIndexKey(testOriginA, sharedOriginIndexKey)
-	issuer.AddOriginWithIndexKey(testOriginB, sharedOriginIndexKey)
+	err = issuer.AddOriginWithIndexKey(testOriginA, sharedOriginIndexKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = issuer.AddOriginWithIndexKey(testOriginB, sharedOriginIndexKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	secretKey, err := ecdsa.GenerateKey(curve, rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
 	blindKey, err := ecdsa.GenerateKey(curve, rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
 	client := NewRateLimitedClientFromSecret(secretKey.D.Bytes())
 	attester := NewRateLimitedAttester(NewMemoryClientStateCache())
 
 	challenge := make([]byte, 32)
-	rand.Reader.Read(challenge)
+	util.MustRead(t, rand.Reader, challenge)
 
 	anonymousOriginIDA := make([]byte, 32)
-	rand.Reader.Read(anonymousOriginIDA)
+	util.MustRead(t, rand.Reader, anonymousOriginIDA)
 
 	nonce := make([]byte, 32)
-	rand.Reader.Read(nonce)
+	util.MustRead(t, rand.Reader, nonce)
 
 	tokenKeyID := issuer.TokenKeyID()
 	tokenPublicKey := issuer.TokenKey()
@@ -284,7 +305,7 @@ func TestRateLimitedIssuerOriginRepeatFailure(t *testing.T) {
 
 	// Run request for origin B
 	anonymousOriginIDB := make([]byte, 32)
-	rand.Reader.Read(anonymousOriginIDB)
+	util.MustRead(t, rand.Reader, anonymousOriginIDA)
 
 	requestState, err = client.CreateTokenRequest(challenge, nonce, blindKey.D.Bytes(), tokenKeyID, tokenPublicKey, testOriginB, issuer.NameKey())
 	if err != nil {
@@ -295,7 +316,7 @@ func TestRateLimitedIssuerOriginRepeatFailure(t *testing.T) {
 		t.Error(err)
 	}
 
-	blindedSignature, blindedPublicKey, err = issuer.Evaluate(requestState.Request().Marshal())
+	_, blindedPublicKey, err = issuer.Evaluate(requestState.Request().Marshal())
 	if err != nil {
 		t.Error(err)
 	}
@@ -313,7 +334,7 @@ func fatalOnError(t *testing.T, err error, msg string) {
 	realMsg := fmt.Sprintf("%s: %v", msg, err)
 	if err != nil {
 		if t != nil {
-			t.Fatalf(realMsg)
+			t.Fatal(realMsg)
 		} else {
 			panic(realMsg)
 		}
@@ -445,7 +466,7 @@ func (etv *originEncryptionTestVector) UnmarshalJSON(data []byte) error {
 
 func generateOriginEncryptionTestVector(t *testing.T, kemID hpke.KEMID, kdfID hpke.KDFID, aeadID hpke.AEADID) originEncryptionTestVector {
 	ikm := make([]byte, 32)
-	rand.Reader.Read(ikm)
+	util.MustRead(t, rand.Reader, ikm)
 	nameKey, err := CreatePrivateEncapKeyFromSeed(ikm)
 	if err != nil {
 		t.Fatal(err)
@@ -453,11 +474,11 @@ func generateOriginEncryptionTestVector(t *testing.T, kemID hpke.KEMID, kdfID hp
 
 	// Generate random token and index requests
 	requestKey := make([]byte, 49)
-	rand.Reader.Read(requestKey)
+	util.MustRead(t, rand.Reader, requestKey)
 	tokenKeyIDBuf := []byte{0x00}
-	rand.Reader.Read(tokenKeyIDBuf)
+	util.MustRead(t, rand.Reader, tokenKeyIDBuf)
 	blindMessage := make([]byte, 256)
-	rand.Reader.Read(blindMessage)
+	util.MustRead(t, rand.Reader, blindMessage)
 
 	originName := "test.example"
 	_, encryptedTokenRequest, secret, err := encryptOriginTokenRequest(nameKey.Public(), tokenKeyIDBuf[0], blindMessage, requestKey, originName)
@@ -541,7 +562,7 @@ func TestVectorGenerateOriginEncryption(t *testing.T) {
 
 	var outputFile string
 	if outputFile = os.Getenv(outputOriginEncryptionTestVectorEnvironmentKey); len(outputFile) > 0 {
-		err := ioutil.WriteFile(outputFile, encoded, 0644)
+		err := os.WriteFile(outputFile, encoded, 0644)
 		if err != nil {
 			t.Fatalf("Error writing test vectors: %v", err)
 		}
@@ -554,7 +575,7 @@ func TestVectorVerifyOriginEncryption(t *testing.T) {
 		t.Skip("Test vectors were not provided")
 	}
 
-	encoded, err := ioutil.ReadFile(inputFile)
+	encoded, err := os.ReadFile(inputFile)
 	if err != nil {
 		t.Fatalf("Failed reading test vectors: %v", err)
 	}
@@ -764,7 +785,7 @@ func TestVectorGenerateAnonOriginID(t *testing.T) {
 
 	var outputFile string
 	if outputFile = os.Getenv(outputAnonOriginIDTestVectorEnvironmentKey); len(outputFile) > 0 {
-		err := ioutil.WriteFile(outputFile, encoded, 0644)
+		err := os.WriteFile(outputFile, encoded, 0644)
 		if err != nil {
 			t.Fatalf("Error writing test vectors: %v", err)
 		}
@@ -777,7 +798,7 @@ func TestVectorVerifyAnonOriginID(t *testing.T) {
 		t.Skip("Test vectors were not provided")
 	}
 
-	encoded, err := ioutil.ReadFile(inputFile)
+	encoded, err := os.ReadFile(inputFile)
 	if err != nil {
 		t.Fatalf("Failed reading test vectors: %v", err)
 	}
@@ -788,19 +809,28 @@ func TestVectorVerifyAnonOriginID(t *testing.T) {
 func BenchmarkRateLimitedTokenRoundTrip(b *testing.B) {
 	issuer := NewRateLimitedIssuer(loadPrivateKeyForBenchmark(b))
 	testOrigin := "origin.example"
-	issuer.AddOrigin(testOrigin)
+	err := issuer.AddOrigin(testOrigin)
+	if err != nil {
+		b.Fatal(err)
+	}
 
 	attester := NewRateLimitedAttester(NewMemoryClientStateCache())
 
 	curve := elliptic.P384()
 	secretKey, err := ecdsa.GenerateKey(curve, rand.Reader)
+	if err != nil {
+		b.Fatal(err)
+	}
 	requestKey, err := ecdsa.GenerateKey(curve, rand.Reader)
+	if err != nil {
+		b.Fatal(err)
+	}
 	client := NewRateLimitedClientFromSecret(secretKey.D.Bytes())
 
 	challenge := make([]byte, 32)
-	rand.Reader.Read(challenge)
+	util.MustRead(b, rand.Reader, challenge)
 	anonymousOriginID := make([]byte, 32)
-	rand.Reader.Read(anonymousOriginID)
+	util.MustRead(b, rand.Reader, anonymousOriginID)
 
 	var requestState RateLimitedTokenRequestState
 	b.Run("ClientRequest", func(b *testing.B) {
@@ -808,7 +838,7 @@ func BenchmarkRateLimitedTokenRoundTrip(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
 			nonce := make([]byte, 32)
-			rand.Reader.Read(nonce)
+			util.MustRead(b, rand.Reader, nonce)
 			requestState, err = client.CreateTokenRequest(challenge, nonce, requestKey, issuer.TokenKeyID(), issuer.TokenKey(), testOrigin, issuer.NameKey())
 			if err != nil {
 				b.Error(err)

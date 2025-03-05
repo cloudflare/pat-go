@@ -7,13 +7,14 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+
 	"math/big"
 	"os"
 	"testing"
 
 	"github.com/cloudflare/pat-go/ecdsa"
 	"github.com/cloudflare/pat-go/ed25519"
+	"github.com/cloudflare/pat-go/util"
 )
 
 const (
@@ -134,12 +135,12 @@ func (etv *ecdsaBlindingTestVector) UnmarshalJSON(data []byte) error {
 
 	pkSx, pkSy := elliptic.UnmarshalCompressed(curve, mustUnhex(nil, raw.PublicKey))
 	pkS := ecdsa.PublicKey{
-		curve, pkSx, pkSy,
+		Curve: curve, X: pkSx, Y: pkSy,
 	}
 
 	pkRx, pkRy := elliptic.UnmarshalCompressed(curve, mustUnhex(nil, raw.BlindPublicKey))
 	pkR := ecdsa.PublicKey{
-		curve, pkRx, pkRy,
+		Curve: curve, X: pkRx, Y: pkRy,
 	}
 
 	pkBx, pkBy := curve.ScalarBaseMult(skB.Bytes())
@@ -148,14 +149,14 @@ func (etv *ecdsaBlindingTestVector) UnmarshalJSON(data []byte) error {
 	sigEnc := mustUnhex(nil, raw.Signature)
 
 	etv.skS = &ecdsa.PrivateKey{
-		pkS, skS,
+		PublicKey: pkS, D: skS,
 	}
 	etv.bk = &ecdsa.PrivateKey{
-		ecdsa.PublicKey{
+		PublicKey: ecdsa.PublicKey{
 			Curve: curve,
 			X:     pkBx,
 			Y:     pkBy,
-		}, skB,
+		}, D: skB,
 	}
 	etv.pkR = &pkR
 	etv.message = mustUnhex(nil, raw.Message)
@@ -179,7 +180,7 @@ func generateECDSABlindingTestVector(t *testing.T, c elliptic.Curve, h crypto.Ha
 	}
 
 	context := make([]byte, 32)
-	rand.Reader.Read(context)
+	util.MustRead(t, rand.Reader, context)
 
 	pkR, err := ecdsa.BlindPublicKeyWithContext(c, &skS.PublicKey, skB, context[0:contextLen])
 	if err != nil {
@@ -191,6 +192,9 @@ func generateECDSABlindingTestVector(t *testing.T, c elliptic.Curve, h crypto.Ha
 	digester.Write(message)
 	digest := digester.Sum(nil)
 	r, s, err := ecdsa.BlindKeySignWithContext(rand.Reader, skS, skB, digest, context[0:contextLen])
+	if err != nil {
+		t.Error(err)
+	}
 
 	return ecdsaBlindingTestVector{
 		c:       c,
@@ -251,7 +255,7 @@ func TestVectorGenerateECDSABlinding(t *testing.T) {
 
 	var outputFile string
 	if outputFile = os.Getenv(outputECDSABlindingTestVectorEnvironmentKey); len(outputFile) > 0 {
-		err := ioutil.WriteFile(outputFile, encoded, 0644)
+		err := os.WriteFile(outputFile, encoded, 0644)
 		if err != nil {
 			t.Fatalf("Error writing test vectors: %v", err)
 		}
@@ -264,7 +268,7 @@ func TestVectorVerifyECDSABlinding(t *testing.T) {
 		t.Skip("Test vectors were not provided")
 	}
 
-	encoded, err := ioutil.ReadFile(inputFile)
+	encoded, err := os.ReadFile(inputFile)
 	if err != nil {
 		t.Fatalf("Failed reading test vectors: %v", err)
 	}
@@ -286,16 +290,15 @@ type rawEd25519BlindingTestVector struct {
 }
 
 type ed25519BlindingTestVector struct {
-	t            *testing.T
-	skS          []byte
-	pkS          ed25519.PublicKey
-	skB          []byte
-	pkB          ed25519.PublicKey
-	pkR          ed25519.PublicKey
-	requestBlind []byte
-	message      []byte
-	context      []byte
-	signature    []byte
+	t         *testing.T
+	skS       []byte
+	pkS       ed25519.PublicKey
+	skB       []byte
+	pkB       ed25519.PublicKey
+	pkR       ed25519.PublicKey
+	message   []byte
+	context   []byte
+	signature []byte
 }
 
 type ed25519BlindingTestVectorArray struct {
@@ -353,13 +356,13 @@ func (etv *ed25519BlindingTestVector) UnmarshalJSON(data []byte) error {
 
 func generateEd25519BlindingTestVector(t *testing.T, blindLen int, contextLen int) ed25519BlindingTestVector {
 	skS := make([]byte, 32)
-	rand.Reader.Read(skS)
+	util.MustRead(t, rand.Reader, skS)
 
 	skB := make([]byte, 32)
-	rand.Reader.Read(skB[0:blindLen])
+	util.MustRead(t, rand.Reader, skB[0:blindLen])
 
 	context := make([]byte, 32)
-	rand.Reader.Read(context)
+	util.MustRead(t, rand.Reader, context)
 
 	privateKey := ed25519.NewKeyFromSeed(skS)
 	publicKey := privateKey.Public().(ed25519.PublicKey)
@@ -433,7 +436,7 @@ func TestVectorGenerateEd25519Blinding(t *testing.T) {
 
 	var outputFile string
 	if outputFile = os.Getenv(outputEd25519BlindingTestVectorEnvironmentKey); len(outputFile) > 0 {
-		err := ioutil.WriteFile(outputFile, encoded, 0644)
+		err := os.WriteFile(outputFile, encoded, 0644)
 		if err != nil {
 			t.Fatalf("Error writing test vectors: %v", err)
 		}
@@ -446,7 +449,7 @@ func TestVectorVerifyEd25519Blinding(t *testing.T) {
 		t.Skip("Test vectors were not provided")
 	}
 
-	encoded, err := ioutil.ReadFile(inputFile)
+	encoded, err := os.ReadFile(inputFile)
 	if err != nil {
 		t.Fatalf("Failed reading test vectors: %v", err)
 	}
@@ -458,17 +461,17 @@ func BenchmarkEd25519(b *testing.B) {
 	b.Run("KeyGen", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			skB := make([]byte, 32)
-			rand.Reader.Read(skB)
+			util.MustRead(b, rand.Reader, skB)
 		}
 	})
 
 	b.Run("BlindPublicKey", func(b *testing.B) {
 		skS := make([]byte, 32)
-		rand.Reader.Read(skS)
+		util.MustRead(b, rand.Reader, skS)
 		skB := make([]byte, 32)
-		rand.Reader.Read(skB)
+		util.MustRead(b, rand.Reader, skB)
 		context := make([]byte, 32)
-		rand.Reader.Read(context)
+		util.MustRead(b, rand.Reader, context)
 		privateKey := ed25519.NewKeyFromSeed(skS)
 
 		for n := 0; n < b.N; n++ {
@@ -482,11 +485,12 @@ func BenchmarkEd25519(b *testing.B) {
 
 	b.Run("UnblindPublicKey", func(b *testing.B) {
 		skS := make([]byte, 32)
-		rand.Reader.Read(skS)
+		util.MustRead(b, rand.Reader, skS)
 		skB := make([]byte, 32)
-		rand.Reader.Read(skB)
+		util.MustRead(b, rand.Reader, skB)
 		context := make([]byte, 32)
-		rand.Reader.Read(context)
+		util.MustRead(b, rand.Reader, context)
+
 		privateKey := ed25519.NewKeyFromSeed(skS)
 
 		publicKey := privateKey.Public().(ed25519.PublicKey)
@@ -508,14 +512,14 @@ func BenchmarkEd25519(b *testing.B) {
 
 	b.Run("BlindKeySign", func(b *testing.B) {
 		skS := make([]byte, 32)
-		rand.Reader.Read(skS)
+		util.MustRead(b, rand.Reader, skS)
 		skB := make([]byte, 32)
-		rand.Reader.Read(skB)
+		util.MustRead(b, rand.Reader, skB)
 		context := make([]byte, 32)
-		rand.Reader.Read(context)
+		util.MustRead(b, rand.Reader, context)
 		privateKey := ed25519.NewKeyFromSeed(skS)
 		message := make([]byte, 32)
-		rand.Reader.Read(message)
+		util.MustRead(b, rand.Reader, message)
 		for n := 0; n < b.N; n++ {
 			_ = ed25519.BlindKeySignWithContext(privateKey, message, skB, context)
 		}
@@ -523,10 +527,10 @@ func BenchmarkEd25519(b *testing.B) {
 
 	b.Run("Sign", func(b *testing.B) {
 		skS := make([]byte, 32)
-		rand.Reader.Read(skS)
+		util.MustRead(b, rand.Reader, skS)
 		privateKey := ed25519.NewKeyFromSeed(skS)
 		message := make([]byte, 32)
-		rand.Reader.Read(message)
+		util.MustRead(b, rand.Reader, message)
 		for n := 0; n < b.N; n++ {
 			_ = ed25519.Sign(privateKey, message)
 		}
@@ -555,7 +559,7 @@ func BenchmarkECDSA(b *testing.B) {
 			b.Fatal(err)
 		}
 		context := make([]byte, 32)
-		rand.Reader.Read(context)
+		util.MustRead(b, rand.Reader, context)
 
 		for n := 0; n < b.N; n++ {
 			_, err := ecdsa.BlindPublicKeyWithContext(c, &skS.PublicKey, skB, context)
@@ -575,7 +579,7 @@ func BenchmarkECDSA(b *testing.B) {
 			b.Fatal(err)
 		}
 		context := make([]byte, 32)
-		rand.Reader.Read(context)
+		util.MustRead(b, rand.Reader, context)
 
 		pkR, err := ecdsa.BlindPublicKeyWithContext(c, &skS.PublicKey, skB, context)
 		if err != nil {
@@ -603,9 +607,9 @@ func BenchmarkECDSA(b *testing.B) {
 			b.Fatal(err)
 		}
 		context := make([]byte, 32)
-		rand.Reader.Read(context)
+		util.MustRead(b, rand.Reader, context)
 		message := make([]byte, 32)
-		rand.Reader.Read(message)
+		util.MustRead(b, rand.Reader, message)
 		for n := 0; n < b.N; n++ {
 			digester := crypto.SHA384.New()
 			digester.Write(message)
@@ -623,7 +627,7 @@ func BenchmarkECDSA(b *testing.B) {
 			b.Fatal(err)
 		}
 		message := make([]byte, 32)
-		rand.Reader.Read(message)
+		util.MustRead(b, rand.Reader, message)
 		for n := 0; n < b.N; n++ {
 			digester := crypto.SHA384.New()
 			digester.Write(message)
