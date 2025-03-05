@@ -46,10 +46,9 @@ func CreatePrivateEncapKeyFromSeed(seed []byte) (PrivateEncapKey, error) {
 }
 
 type EncapKey struct {
-	id         uint8
-	suite      hpke.CipherSuite
-	privateKey hpke.KEMPrivateKey
-	publicKey  hpke.KEMPublicKey
+	id        uint8
+	suite     hpke.CipherSuite
+	publicKey hpke.KEMPublicKey
 }
 
 func (k PrivateEncapKey) Public() EncapKey {

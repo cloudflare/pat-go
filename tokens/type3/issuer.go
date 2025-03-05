@@ -30,7 +30,10 @@ func NewRateLimitedIssuer(key *rsa.PrivateKey) *RateLimitedIssuer {
 	}
 
 	ikm := make([]byte, suite.KEM.PrivateKeySize())
-	rand.Reader.Read(ikm)
+	_, err = rand.Reader.Read(ikm)
+	if err != nil {
+		return nil
+	}
 	privateKey, publicKey, err := suite.KEM.DeriveKeyPair(ikm)
 	if err != nil {
 		return nil
@@ -214,7 +217,7 @@ func (i RateLimitedIssuer) Evaluate(encodedRequest []byte) ([]byte, []byte, erro
 
 	enc := make([]byte, i.nameKey.suite.KEM.PublicKeySize())
 	copy(enc, req.EncryptedTokenRequest[0:i.nameKey.suite.KEM.PublicKeySize()])
-	salt := append(append(enc, responseNonce...))
+	salt := append(enc, responseNonce...)
 
 	// Derive encryption secrets
 	prk := i.nameKey.suite.KDF.Extract(salt, secret)
