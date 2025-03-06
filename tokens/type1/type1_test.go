@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -42,10 +41,10 @@ func TestBasicPrivateIssuanceRoundTrip(t *testing.T) {
 	client := BasicPrivateClient{}
 
 	challenge := make([]byte, 32)
-	rand.Reader.Read(challenge)
+	util.MustRead(t, rand.Reader, challenge)
 
 	nonce := make([]byte, 32)
-	rand.Reader.Read(nonce)
+	util.MustRead(t, rand.Reader, nonce)
 
 	tokenKeyID := issuer.TokenKeyID()
 	tokenPublicKey := issuer.TokenKey()
@@ -151,7 +150,7 @@ func generateBasicPrivateIssuanceBlindingTestVector(t *testing.T, client *BasicP
 	challenge := tokenChallenge.Marshal()
 
 	nonce := make([]byte, 32)
-	rand.Reader.Read(nonce)
+	util.MustRead(t, rand.Reader, nonce)
 
 	tokenKeyID := issuer.TokenKeyID()
 	tokenPublicKey := issuer.TokenKey()
@@ -234,7 +233,7 @@ func TestVectorGenerateBasicPrivateIssuance(t *testing.T) {
 	hkdf := hkdf.New(hash, secret, nil, []byte{0x00, byte(BasicPrivateTokenType & 0xFF)})
 
 	redemptionContext := make([]byte, 32)
-	hkdf.Read(redemptionContext)
+	util.MustRead(t, hkdf, redemptionContext)
 
 	challenges := []tokens.TokenChallenge{
 		createTokenChallenge(BasicPrivateTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
@@ -271,7 +270,7 @@ func TestVectorGenerateBasicPrivateIssuance(t *testing.T) {
 
 	var outputFile string
 	if outputFile = os.Getenv(outputBasicPrivateIssuanceTestVectorEnvironmentKey); len(outputFile) > 0 {
-		err := ioutil.WriteFile(outputFile, encoded, 0644)
+		err := os.WriteFile(outputFile, encoded, 0644)
 		if err != nil {
 			t.Fatalf("Error writing test vectors: %v", err)
 		}
@@ -284,7 +283,7 @@ func TestVectorVerifyBasicPrivateIssuance(t *testing.T) {
 		t.Skip("Test vectors were not provided")
 	}
 
-	encoded, err := ioutil.ReadFile(inputFile)
+	encoded, err := os.ReadFile(inputFile)
 	if err != nil {
 		t.Fatalf("Failed reading test vectors: %v", err)
 	}

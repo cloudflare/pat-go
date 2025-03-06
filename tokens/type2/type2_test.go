@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -92,7 +91,7 @@ func TestBasicPublicIssuanceRoundTrip(t *testing.T) {
 	challenge := tokenChallenge.Marshal()
 
 	nonce := make([]byte, 32)
-	rand.Reader.Read(nonce)
+	util.MustRead(t, rand.Reader, nonce)
 
 	tokenKeyID := issuer.TokenKeyID()
 	tokenPublicKey := issuer.TokenKey()
@@ -221,7 +220,7 @@ func generateBasicIssuanceTestVector(t *testing.T, client *BasicPublicClient, is
 	challenge := tokenChallenge.Marshal()
 
 	nonce := make([]byte, 32)
-	rand.Reader.Read(nonce)
+	util.MustRead(t, rand.Reader, nonce)
 
 	tokenKeyID := issuer.TokenKeyID()
 	tokenPublicKey := issuer.TokenKey()
@@ -299,7 +298,7 @@ func TestVectorGenerateBasicIssuance(t *testing.T) {
 	hkdf := hkdf.New(hash, secret, nil, []byte{0x00, byte(BasicPublicTokenType & 0xFF)})
 
 	redemptionContext := make([]byte, 32)
-	hkdf.Read(redemptionContext)
+	util.MustRead(t, hkdf, redemptionContext)
 
 	challenges := []tokens.TokenChallenge{
 		createTokenChallenge(BasicPublicTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
@@ -331,7 +330,7 @@ func TestVectorGenerateBasicIssuance(t *testing.T) {
 
 	var outputFile string
 	if outputFile = os.Getenv(outputBasicIssuanceTestVectorEnvironmentKey); len(outputFile) > 0 {
-		err := ioutil.WriteFile(outputFile, encoded, 0644)
+		err := os.WriteFile(outputFile, encoded, 0644)
 		if err != nil {
 			t.Fatalf("Error writing test vectors: %v", err)
 		}
@@ -344,7 +343,7 @@ func TestVectorVerifyBasicIssuance(t *testing.T) {
 		t.Skip("Test vectors were not provided")
 	}
 
-	encoded, err := ioutil.ReadFile(inputFile)
+	encoded, err := os.ReadFile(inputFile)
 	if err != nil {
 		t.Fatalf("Failed reading test vectors: %v", err)
 	}
@@ -361,14 +360,14 @@ func BenchmarkPublicTokenRoundTrip(b *testing.B) {
 	tokenPublicKey := issuer.TokenKey()
 
 	challenge := make([]byte, 32)
-	rand.Reader.Read(challenge)
+	util.MustRead(b, rand.Reader, challenge)
 
 	var err error
 	var requestState BasicPublicTokenRequestState
 	b.Run("ClientRequest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			nonce := make([]byte, 32)
-			rand.Reader.Read(nonce)
+			util.MustRead(b, rand.Reader, nonce)
 
 			requestState, err = client.CreateTokenRequest(challenge, nonce, tokenKeyID, tokenPublicKey)
 			if err != nil {

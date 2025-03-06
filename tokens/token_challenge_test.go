@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
@@ -81,7 +80,7 @@ func createTokenChallenge(tokenType uint16, redemptionContext []byte, issuerName
 
 func TestTokenChallengeMarshal(t *testing.T) {
 	context := make([]byte, 32)
-	rand.Reader.Read(context)
+	util.MustRead(t, rand.Reader, context)
 
 	challenge := createTokenChallenge(0x0003, context, "issuer.example", []string{"origin.example"})
 	challengeEnc := challenge.Marshal()
@@ -293,10 +292,10 @@ func TestVectorGenerateToken(t *testing.T) {
 	vectors := make([]tokenTestVector, 0)
 
 	redemptonContext := make([]byte, 32)
-	rand.Reader.Read(redemptonContext)
+	util.MustRead(t, rand.Reader, redemptonContext)
 
 	nonce := make([]byte, 32)
-	rand.Reader.Read(nonce)
+	util.MustRead(t, rand.Reader, nonce)
 
 	tokenSigningKey := loadPrivateKey(t)
 	issuerName := "issuer.example"
@@ -368,7 +367,7 @@ func TestVectorGenerateToken(t *testing.T) {
 
 	var outputFile string
 	if outputFile = os.Getenv(outputTokenTestVectorEnvironmentKey); len(outputFile) > 0 {
-		err := ioutil.WriteFile(outputFile, encoded, 0644)
+		err := os.WriteFile(outputFile, encoded, 0644)
 		if err != nil {
 			t.Fatalf("Error writing test vectors: %v", err)
 		}
@@ -381,7 +380,7 @@ func TestVectorVerifyToken(t *testing.T) {
 		t.Skip("Test vectors were not provided")
 	}
 
-	encoded, err := ioutil.ReadFile(inputFile)
+	encoded, err := os.ReadFile(inputFile)
 	if err != nil {
 		t.Fatalf("Failed reading test vectors: %v", err)
 	}

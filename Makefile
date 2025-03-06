@@ -1,5 +1,5 @@
 test:
-	go test ./...
+	go test ./... --count=1
 
 vectors: test
 	BATCHED_ISSUANCE_TEST_VECTORS_OUT=batched-issuance-test-vectors.json go test -v -run TestVectorGenerateBatchedIssuance ./... 

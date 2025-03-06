@@ -492,20 +492,17 @@ func newTokenRequestStateType5(req *type5.BatchedPrivateTokenRequestState) token
 func (req tokenRequestState) Request() (tokens.TokenRequestWithDetails, error) {
 	if req.state1 != nil {
 		req := req.state1.Request()
-		var withPrefix tokens.TokenRequestWithDetails
-		withPrefix = req
+		var withPrefix tokens.TokenRequestWithDetails = req
 		return withPrefix, nil
 	}
 	if req.state2 != nil {
 		req := req.state2.Request()
-		var withPrefix tokens.TokenRequestWithDetails
-		withPrefix = req
+		var withPrefix tokens.TokenRequestWithDetails = req
 		return withPrefix, nil
 	}
 	if req.stateF91A != nil {
 		req := req.stateF91A.Request()
-		var withPrefix tokens.TokenRequestWithDetails
-		withPrefix = req
+		var withPrefix tokens.TokenRequestWithDetails = req
 		return withPrefix, nil
 	}
 	return nil, errors.New("unreachable")
@@ -600,7 +597,10 @@ func generateNonceOption(tokenType uint16) (*nonceOption, error) {
 	nonces := make([][]byte, 3)
 	for i := 0; i < len(nonces); i++ {
 		nonces[i] = make([]byte, 32)
-		rand.Reader.Read(nonces[i])
+		_, err := rand.Reader.Read(nonces[i])
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	switch tokenType {
@@ -881,7 +881,7 @@ func TestVectorGenerateBatchedIssuance(t *testing.T) {
 	hkdf := hkdf.New(hash, secret, nil, []byte{0x00, byte(type1.BasicPrivateTokenType & 0xFF)})
 
 	redemptionContext := make([]byte, 32)
-	hkdf.Read(redemptionContext)
+	util.MustRead(t, hkdf, redemptionContext)
 
 	challenges := [][]tokens.TokenChallenge{
 		{

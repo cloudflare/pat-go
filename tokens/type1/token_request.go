@@ -6,9 +6,7 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 )
 
-var (
-	BasicPrivateTokenType = uint16(0x0001)
-)
+const BasicPrivateTokenType = uint16(0x0001)
 
 type BasicPrivateTokenRequest struct {
 	raw        []byte
