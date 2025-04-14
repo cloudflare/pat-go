@@ -61,7 +61,7 @@ func (r *BatchedTokenRequest) Unmarshal(data []byte) bool {
 			return false
 		}
 		r.token_requests = append(r.token_requests, token_request)
-		// Super inneficient but we don't know how many bytes have benen read otherwise
+		// Super inefficient but we don't know how many bytes have been read otherwise
 		i += len(token_request.Marshal())
 	}
 
