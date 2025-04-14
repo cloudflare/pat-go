@@ -83,11 +83,11 @@ func createTokenChallenge(tokenType uint16, redemptionContext []byte, issuerName
 	return challenge
 }
 
-type basicIssuer[T type1.BasicPrivateIssuer | type2.BasicPublicIssuer | type5.BatchedPrivateIssuer] struct {
+type basicIssuer[T type1.BasicPrivateIssuer | type2.BasicPublicIssuer] struct {
 	inner T
 }
 
-func newBasicIssuer[T type1.BasicPrivateIssuer | type2.BasicPublicIssuer | type5.BatchedPrivateIssuer](inner T) basicIssuer[T] {
+func newBasicIssuer[T type1.BasicPrivateIssuer | type2.BasicPublicIssuer](inner T) basicIssuer[T] {
 	return basicIssuer[T]{
 		inner,
 	}
@@ -103,12 +103,6 @@ func (i basicIssuer[T]) Evaluate(req tokens.TokenRequest) ([]byte, error) {
 		return inner.Evaluate(req)
 	case type2.BasicPublicIssuer:
 		req, ok := req.(*type2.BasicPublicTokenRequest)
-		if !ok {
-			return nil, errors.New("TokenRequest does not match issuer type")
-		}
-		return inner.Evaluate(req)
-	case type5.BatchedPrivateIssuer:
-		req, ok := req.(*type5.BatchedPrivateTokenRequest)
 		if !ok {
 			return nil, errors.New("TokenRequest does not match issuer type")
 		}
@@ -137,8 +131,6 @@ func (i basicIssuer[T]) Type() uint16 {
 		return inner.Type()
 	case type2.BasicPublicIssuer:
 		return inner.Type()
-	case type5.BatchedPrivateIssuer:
-		return inner.Type()
 	default:
 		panic("unreachable")
 	}
@@ -150,8 +142,6 @@ func UnmarshalArbitratyToken(tokenType uint16, data []byte) (tokens.Token, error
 		return type1.UnmarshalPrivateToken(data)
 	case type2.BasicPublicTokenType:
 		return type2.UnmarshalToken(data)
-	case type5.BatchedPrivateTokenType:
-		return type5.UnmarshalBatchedPrivateToken(data)
 	default:
 		return tokens.Token{}, errors.New("invalid Token encoding")
 	}
@@ -340,40 +330,22 @@ type innerGenerateType2 struct {
 	client    *type2.BasicPublicClient
 }
 
-type innerGenerateType5 struct {
-	challenge tokens.TokenChallenge
-	sk        *oprf.PrivateKey
-	issuer    *type5.BatchedPrivateIssuer
-	client    *type5.BatchedPrivateClient
-}
-
 type innerGenerate struct {
-	inner1    *innerGenerateType1
-	inner2    *innerGenerateType2
-	innerF91A *innerGenerateType5
+	inner1 *innerGenerateType1
+	inner2 *innerGenerateType2
 }
 
 func newInnerGenerateType1(i *innerGenerateType1) innerGenerate {
 	return innerGenerate{
-		inner1:    i,
-		inner2:    nil,
-		innerF91A: nil,
+		inner1: i,
+		inner2: nil,
 	}
 }
 
 func newInnerGenerateType2(i *innerGenerateType2) innerGenerate {
 	return innerGenerate{
-		inner1:    nil,
-		inner2:    i,
-		innerF91A: nil,
-	}
-}
-
-func newInnerGenerateType5(i *innerGenerateType5) innerGenerate {
-	return innerGenerate{
-		inner1:    nil,
-		inner2:    nil,
-		innerF91A: i,
+		inner1: nil,
+		inner2: i,
 	}
 }
 
@@ -383,9 +355,6 @@ func (i innerGenerate) Challenge() (*tokens.TokenChallenge, error) {
 	}
 	if i.inner2 != nil {
 		return &i.inner2.challenge, nil
-	}
-	if i.innerF91A != nil {
-		return &i.innerF91A.challenge, nil
 	}
 	return nil, errors.New("unreachable")
 }
@@ -397,9 +366,6 @@ func (i innerGenerate) PrivateKey() ([]byte, error) {
 	if i.inner2 != nil {
 		return util.MustMarshalPrivateKey(i.inner2.sk), nil
 	}
-	if i.innerF91A != nil {
-		return util.MustMarshalPrivateOPRFKey(i.innerF91A.sk), nil
-	}
 	return nil, errors.New("unreachable")
 }
 
@@ -409,9 +375,6 @@ func (i innerGenerate) PublicKey() ([]byte, error) {
 	}
 	if i.inner2 != nil {
 		return util.MustMarshalPublicKey(i.inner2.issuer.TokenKey()), nil
-	}
-	if i.innerF91A != nil {
-		return util.MustMarshalPublicOPRFKey(i.innerF91A.issuer.TokenKey()), nil
 	}
 	return nil, errors.New("unreachable")
 }
@@ -443,49 +406,25 @@ func (i innerGenerate) CreateTokenRequest(challenge []byte, nonce nonceOption) (
 		state := newTokenRequestStateType2(&requestState)
 		return &state, nil
 	}
-	if i.innerF91A != nil {
-		issuer := i.innerF91A.issuer
-		client := i.innerF91A.client
-		tokenKeyID := issuer.TokenKeyID()
-		tokenPublicKey := issuer.TokenKey()
-
-		requestState, err := client.CreateTokenRequest(challenge, nonce.nonces, tokenKeyID, tokenPublicKey)
-		if err != nil {
-			return nil, err
-		}
-		state := newTokenRequestStateType5(&requestState)
-		return &state, nil
-	}
 	return nil, errors.New("unreachable")
 }
 
 type tokenRequestState struct {
-	state1    *type1.BasicPrivateTokenRequestState
-	state2    *type2.BasicPublicTokenRequestState
-	stateF91A *type5.BatchedPrivateTokenRequestState
+	state1 *type1.BasicPrivateTokenRequestState
+	state2 *type2.BasicPublicTokenRequestState
 }
 
 func newTokenRequestStateType1(req *type1.BasicPrivateTokenRequestState) tokenRequestState {
 	return tokenRequestState{
-		state1:    req,
-		state2:    nil,
-		stateF91A: nil,
+		state1: req,
+		state2: nil,
 	}
 }
 
 func newTokenRequestStateType2(req *type2.BasicPublicTokenRequestState) tokenRequestState {
 	return tokenRequestState{
-		state1:    nil,
-		state2:    req,
-		stateF91A: nil,
-	}
-}
-
-func newTokenRequestStateType5(req *type5.BatchedPrivateTokenRequestState) tokenRequestState {
-	return tokenRequestState{
-		state1:    nil,
-		state2:    nil,
-		stateF91A: req,
+		state1: nil,
+		state2: req,
 	}
 }
 
@@ -497,11 +436,6 @@ func (req tokenRequestState) Request() (tokens.TokenRequestWithDetails, error) {
 	}
 	if req.state2 != nil {
 		req := req.state2.Request()
-		var withPrefix tokens.TokenRequestWithDetails = req
-		return withPrefix, nil
-	}
-	if req.stateF91A != nil {
-		req := req.stateF91A.Request()
 		var withPrefix tokens.TokenRequestWithDetails = req
 		return withPrefix, nil
 	}
@@ -532,25 +466,6 @@ func (req tokenRequestState) BlindOption() (*blindOption, error) {
 		}
 		return &option, nil
 	}
-	if req.stateF91A != nil {
-		verifier := req.stateF91A.ForTestsOnlyVerifier()
-		blinds := verifier.CopyBlinds()
-		blindEncs := make([][]byte, len(blinds))
-		for i := 0; i < len(blinds); i++ {
-			blindEnc, err := blinds[i].MarshalBinary()
-			if err != nil {
-				return nil, err
-			}
-			blindEncs[i] = blindEnc
-		}
-		option := blindOption{
-			blind:  nil,
-			blinds: blindEncs,
-			salt:   nil,
-		}
-		return &option, nil
-
-	}
 	return nil, errors.New("unreachable")
 }
 
@@ -569,14 +484,6 @@ func (req tokenRequestState) FinalizeToken(data []byte) (*tokenOption, error) {
 			return nil, err
 		}
 		option := newSingleTokenOption(&token)
-		return &option, nil
-	}
-	if req.stateF91A != nil {
-		tokens, err := req.stateF91A.FinalizeTokens(data)
-		if err != nil {
-			return nil, err
-		}
-		option := newArrayTokenOption(tokens)
 		return &option, nil
 	}
 	return nil, errors.New("unreachable")
@@ -606,9 +513,6 @@ func generateNonceOption(tokenType uint16) (*nonceOption, error) {
 	switch tokenType {
 	case type1.BasicPrivateTokenType, type2.BasicPublicTokenType:
 		option := newSingleNonceOption(nonces[0])
-		return &option, nil
-	case type5.BatchedPrivateTokenType:
-		option := newArrayNonceOption(nonces)
 		return &option, nil
 	default:
 		return nil, fmt.Errorf("unsupported token type %d", tokenType)
@@ -794,28 +698,6 @@ func verifyBasicPrivateIssuanceTestVector(t *testing.T, vector BatchedIssuanceTe
 				issuer,
 				client,
 			})
-		case type5.BatchedPrivateTokenType:
-			challengeEnc := issuance.challenge
-			challenge, err := tokens.UnmarshalTokenChallenge(challengeEnc)
-			if err != nil {
-				t.Error(err)
-			}
-			sk := util.MustUnmarshalBatchedPrivateOPRFKey(issuance.skS)
-			issuer := type5.NewBatchedPrivateIssuer(sk)
-			issuers[i] = newBasicIssuer(*issuer)
-			client := &type5.BatchedPrivateClient{}
-			requestState, err := client.CreateTokenRequestWithBlinds(challengeEnc, issuance.nonces, issuer.TokenKeyID(), issuer.TokenKey(), issuance.blinds)
-			if err != nil {
-				t.Error(err)
-			}
-			requestStates[i] = newTokenRequestStateType5(&requestState)
-			requests[i] = requestState.Request()
-			tokenGenerate[i] = newInnerGenerateType5(&innerGenerateType5{
-				challenge,
-				sk,
-				issuer,
-				client,
-			})
 		}
 	}
 
@@ -852,12 +734,6 @@ func verifyBasicPrivateIssuanceTestVector(t *testing.T, vector BatchedIssuanceTe
 		case type1.BasicPrivateTokenType, type2.BasicPublicTokenType:
 			if !bytes.Equal(option.token.Marshal(), issuance.token.Marshal()) {
 				t.Fatal("Token mismatch")
-			}
-		case type5.BatchedPrivateTokenType:
-			for j, token := range issuance.tokens {
-				if !bytes.Equal(option.tokens[j].Marshal(), token.Marshal()) {
-					t.Fatal("Tokens mismatch")
-				}
 			}
 		}
 	}
@@ -902,14 +778,6 @@ func TestVectorGenerateBatchedIssuance(t *testing.T) {
 			createTokenChallenge(type1.BasicPrivateTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
 			createTokenChallenge(type2.BasicPublicTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
 		},
-		{
-			createTokenChallenge(type5.BatchedPrivateTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
-		},
-		{
-			createTokenChallenge(type1.BasicPrivateTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
-			createTokenChallenge(type2.BasicPublicTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
-			createTokenChallenge(type5.BatchedPrivateTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
-		},
 	}
 
 	vectors := make([]BatchedIssuanceTestVector, len(challenges))
@@ -947,23 +815,6 @@ func TestVectorGenerateBatchedIssuance(t *testing.T) {
 				issuers = append(issuers, newBasicIssuer(*issuer))
 				client := &type2.BasicPublicClient{}
 				generateArgs[j] = newInnerGenerateType2(&innerGenerateType2{
-					challenge,
-					sk,
-					issuer,
-					client,
-				})
-			case type5.BatchedPrivateTokenType:
-				sk, err := oprf.DeriveKey(oprf.SuiteRistretto255, oprf.VerifiableMode, []byte("fixed seed"), challengeEnc)
-				if err != nil {
-					t.Fatal(err)
-				}
-				issuer := type5.NewBatchedPrivateIssuer(sk)
-				if issuer == nil {
-					t.Fatal("Error creating type5 issuer")
-				}
-				issuers = append(issuers, newBasicIssuer(*issuer))
-				client := &type5.BatchedPrivateClient{}
-				generateArgs[j] = newInnerGenerateType5(&innerGenerateType5{
 					challenge,
 					sk,
 					issuer,
