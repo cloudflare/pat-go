@@ -48,7 +48,7 @@ func (r *BatchedTokenRequest) Unmarshal(data []byte) bool {
 	i := offset
 	for i < offset+int(l) {
 		var token_request tokens.TokenRequestWithDetails
-		token_type := binary.BigEndian.Uint16(data[i:2])
+		token_type := binary.BigEndian.Uint16(data[i : i+2])
 		switch token_type {
 		case type1.BasicPrivateTokenType:
 			token_request = new(type1.BasicPrivateTokenRequest)

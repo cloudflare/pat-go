@@ -23,13 +23,13 @@ func UnmarshalBatchedTokenResponses(data []byte) ([][]byte, error) {
 	for !token_responses_string.Empty() {
 		var present uint8
 
-		if !token_responses_string.ReadUint8(&present) || present > 1 {
+		if !token_responses_string.ReadUint8(&present) {
 			return nil, fmt.Errorf("invalid Token encoding")
 		}
 
-		if present == 0 {
+		if present == uint8(TokenStatusAbsent) {
 			token_responses = append(token_responses, []byte{})
-		} else {
+		} else if present == uint8(TokenStatusPresent) {
 			var token_type uint16
 			if !token_responses_string.ReadUint16(&token_type) {
 				return nil, fmt.Errorf("invalid Token encoding")
@@ -51,6 +51,8 @@ func UnmarshalBatchedTokenResponses(data []byte) ([][]byte, error) {
 				return nil, fmt.Errorf("invalid Token encoding")
 			}
 			token_responses = append(token_responses, token_response)
+		} else {
+			return nil, fmt.Errorf("invalid Token encoding")
 		}
 	}
 

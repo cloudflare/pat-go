@@ -6,6 +6,13 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 )
 
+type TokenStatus uint8
+
+const (
+	TokenStatusAbsent TokenStatus = iota
+	TokenStatusPresent
+)
+
 type Issuer interface {
 	Evaluate(req tokens.TokenRequest) ([]byte, error)
 	TokenKeyID() []byte
@@ -70,11 +77,11 @@ func (i BasicBatchedIssuer) EvaluateBatch(req *BatchedTokenRequest) ([]byte, err
 	bResps := cryptobyte.NewBuilder(nil)
 	for i, response := range responses {
 		if len(response) > 0 {
-			bResps.AddUint8(1)
+			bResps.AddUint8(uint8(TokenStatusPresent))
 			bResps.AddUint16(req.token_requests[i].Type())
 			bResps.AddBytes(response)
 		} else {
-			bResps.AddUint8(0)
+			bResps.AddUint8(uint8(TokenStatusAbsent))
 		}
 	}
 	rawBResps := bResps.BytesOrPanic()
