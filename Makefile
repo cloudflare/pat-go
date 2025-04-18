@@ -1,5 +1,6 @@
 test:
 	go test ./... --count=1
+	BATCHED_ISSUANCE_TEST_VECTORS_IN=batched-issuance-test-vectors-rust.json go test -v -run TestVectorVerifyBatchedIssuance ./tokens/batched
 
 vectors: test
 	BATCHED_ISSUANCE_TEST_VECTORS_OUT=batched-issuance-test-vectors.json go test -v -run TestVectorGenerateBatchedIssuance ./... 

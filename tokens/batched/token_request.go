@@ -7,7 +7,6 @@ import (
 	"github.com/cloudflare/pat-go/tokens"
 	"github.com/cloudflare/pat-go/tokens/type1"
 	"github.com/cloudflare/pat-go/tokens/type2"
-	"github.com/cloudflare/pat-go/tokens/type5"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -23,7 +22,7 @@ func (r BatchedTokenRequest) Marshal() []byte {
 
 	bReqs := cryptobyte.NewBuilder(nil)
 	for _, token_request := range r.token_requests {
-		bReqs.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) { b.AddBytes(token_request.Marshal()) })
+		bReqs.AddBytes(token_request.Marshal())
 	}
 
 	rawBReqs := bReqs.BytesOrPanic()
@@ -38,44 +37,32 @@ func (r BatchedTokenRequest) Marshal() []byte {
 }
 
 func (r *BatchedTokenRequest) Unmarshal(data []byte) bool {
-	s := cryptobyte.String(data)
-
 	// At most, a quic varint is 4 byte long. copy them to read the length
 	if len(data) < 4 {
 		return false
 	}
 
 	l, offset := quicwire.ConsumeVarint(data)
-	s.Skip(offset)
 
 	r.token_requests = make([]tokens.TokenRequestWithDetails, 0)
-	i := 0
-	for i < int(l) {
-		var token_request_length uint16
-		if !s.ReadUint16(&token_request_length) {
-			return false
-		}
-		var token_request_data []byte
-		if !s.ReadBytes(&token_request_data, int(token_request_length)) {
-			return false
-		}
-		i += 2 + len(token_request_data)
+	i := offset
+	for i < offset+int(l) {
 		var token_request tokens.TokenRequestWithDetails
-		token_type := binary.BigEndian.Uint16(token_request_data[:2])
+		token_type := binary.BigEndian.Uint16(data[i : i+2])
 		switch token_type {
 		case type1.BasicPrivateTokenType:
 			token_request = new(type1.BasicPrivateTokenRequest)
 		case type2.BasicPublicTokenType:
 			token_request = new(type2.BasicPublicTokenRequest)
-		case type5.BatchedPrivateTokenType:
-			token_request = new(type5.BatchedPrivateTokenRequest)
 		default:
 			return false
 		}
-		if !token_request.Unmarshal(token_request_data) {
+		if !token_request.Unmarshal(data[i:]) {
 			return false
 		}
 		r.token_requests = append(r.token_requests, token_request)
+		// Super inefficient but we don't know how many bytes have been read otherwise
+		i += len(token_request.Marshal())
 	}
 
 	return true
