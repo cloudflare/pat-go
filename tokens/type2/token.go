@@ -7,6 +7,8 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 )
 
+const Nk int = 256 // defined in RFC 9578 Section 8.2.2 https://datatracker.ietf.org/doc/html/rfc9578#name-token-type-blind-rsa-2048-b
+
 func UnmarshalToken(data []byte) (tokens.Token, error) {
 	s := cryptobyte.String(data)
 

@@ -38,9 +38,9 @@ func UnmarshalBatchedTokenResponses(data []byte) ([][]byte, error) {
 			var token_response_length uint16
 			switch token_type {
 			case type1.BasicPrivateTokenType:
-				token_response_length = 145 // Ne + 2*Ns
+				token_response_length = uint16(type1.Ne + 2*type1.Nk) // Ne + 2*Ns
 			case type2.BasicPublicTokenType:
-				token_response_length = 256 // Nk
+				token_response_length = uint16(type2.Nk) // Nk
 			default:
 				return nil, fmt.Errorf("invalid Token encoding")
 			}
