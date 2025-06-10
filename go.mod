@@ -6,7 +6,7 @@ toolchain go1.24.1
 
 require (
 	github.com/cisco/go-hpke v0.0.0-20210524174249-dd22b38cf960
-	github.com/cloudflare/circl v1.3.7
+	github.com/cloudflare/circl v1.6.1
 	golang.org/x/crypto v0.35.0
 )
 
