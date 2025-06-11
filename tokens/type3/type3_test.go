@@ -16,12 +16,11 @@ import (
 	"os"
 	"testing"
 
-	hpke "github.com/cisco/go-hpke"
-	"golang.org/x/crypto/cryptobyte"
-
+	"github.com/cloudflare/circl/hpke"
 	"github.com/cloudflare/pat-go/ecdsa"
 	"github.com/cloudflare/pat-go/ed25519"
 	"github.com/cloudflare/pat-go/util"
+	"golang.org/x/crypto/cryptobyte"
 )
 
 // 2048-bit RSA private key
@@ -354,26 +353,26 @@ func mustHex(d []byte) string {
 // /////
 // Index computation test vector structure
 type rawOriginEncryptionTestVector struct {
-	KEMID                 hpke.KEMID  `json:"kem_id"`
-	KDFID                 hpke.KDFID  `json:"kdf_id"`
-	AEADID                hpke.AEADID `json:"aead_id"`
-	OriginNameKeySeed     string      `json:"issuer_encap_key_seed"`
-	OriginNameKey         string      `json:"issuer_encap_key"`
-	TokenType             uint16      `json:"token_type"`
-	OriginNameKeyID       string      `json:"issuer_encap_key_id"`
-	RequestKey            string      `json:"request_key"`
-	TokenKeyID            uint8       `json:"token_key_id"`
-	BlindMessage          string      `json:"blinded_msg"`
-	OriginName            string      `json:"origin_name"`
-	EncapSecret           string      `json:"encap_secret"`
-	EncryptedTokenRequest string      `json:"encrypted_token_request"`
+	KEMID                 hpke.KEM  `json:"kem_id"`
+	KDFID                 hpke.KDF  `json:"kdf_id"`
+	AEADID                hpke.AEAD `json:"aead_id"`
+	OriginNameKeySeed     string    `json:"issuer_encap_key_seed"`
+	OriginNameKey         string    `json:"issuer_encap_key"`
+	TokenType             uint16    `json:"token_type"`
+	OriginNameKeyID       string    `json:"issuer_encap_key_id"`
+	RequestKey            string    `json:"request_key"`
+	TokenKeyID            uint8     `json:"token_key_id"`
+	BlindMessage          string    `json:"blinded_msg"`
+	OriginName            string    `json:"origin_name"`
+	EncapSecret           string    `json:"encap_secret"`
+	EncryptedTokenRequest string    `json:"encrypted_token_request"`
 }
 
 type originEncryptionTestVector struct {
 	t                     *testing.T
-	kemID                 hpke.KEMID
-	kdfID                 hpke.KDFID
-	aeadID                hpke.AEADID
+	kemID                 hpke.KEM
+	kdfID                 hpke.KDF
+	aeadID                hpke.AEAD
 	nameKeySeed           []byte
 	nameKey               PrivateEncapKey
 	tokenType             uint16
@@ -441,9 +440,9 @@ func (etv *originEncryptionTestVector) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("Unsupported token type")
 	}
 
-	if raw.KEMID != hpke.DHKEM_X25519 ||
+	if raw.KEMID != hpke.KEM_X25519_HKDF_SHA256 ||
 		raw.KDFID != hpke.KDF_HKDF_SHA256 ||
-		raw.AEADID != hpke.AEAD_AESGCM128 {
+		raw.AEADID != hpke.AEAD_AES128GCM {
 		// Unsupported ciphersuite -- pass
 		return fmt.Errorf("Unsupported ciphersuite")
 	}
@@ -464,7 +463,7 @@ func (etv *originEncryptionTestVector) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func generateOriginEncryptionTestVector(t *testing.T, kemID hpke.KEMID, kdfID hpke.KDFID, aeadID hpke.AEADID) originEncryptionTestVector {
+func generateOriginEncryptionTestVector(t *testing.T, kemID hpke.KEM, kdfID hpke.KDF, aeadID hpke.AEAD) originEncryptionTestVector {
 	ikm := make([]byte, 32)
 	util.MustRead(t, rand.Reader, ikm)
 	nameKey, err := CreatePrivateEncapKeyFromSeed(ikm)
@@ -507,18 +506,6 @@ func generateOriginEncryptionTestVector(t *testing.T, kemID hpke.KEMID, kdfID hp
 }
 
 func verifyOriginEncryptionTestVector(t *testing.T, vector originEncryptionTestVector) {
-	suite, err := hpke.AssembleCipherSuite(vector.kemID, vector.kdfID, vector.aeadID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if suite.KEM.ID() != hpke.DHKEM_X25519 ||
-		suite.KDF.ID() != hpke.KDF_HKDF_SHA256 ||
-		suite.AEAD.ID() != hpke.AEAD_AESGCM128 {
-		// Unsupported ciphersuite -- pass
-		return
-	}
-
 	privateNameKey, err := CreatePrivateEncapKeyFromSeed(vector.nameKeySeed)
 	if err != nil {
 		t.Fatal(err)
@@ -549,7 +536,7 @@ func verifyOriginEncryptionTestVectors(t *testing.T, encoded []byte) {
 
 func TestVectorGenerateOriginEncryption(t *testing.T) {
 	vectors := make([]originEncryptionTestVector, 0)
-	vectors = append(vectors, generateOriginEncryptionTestVector(t, hpke.DHKEM_X25519, hpke.KDF_HKDF_SHA256, hpke.AEAD_AESGCM128))
+	vectors = append(vectors, generateOriginEncryptionTestVector(t, hpke.KEM_X25519_HKDF_SHA256, hpke.KDF_HKDF_SHA256, hpke.AEAD_AES128GCM))
 
 	// Encode the test vectors
 	encoded, err := json.Marshal(vectors)

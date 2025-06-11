@@ -1,41 +1,36 @@
 package type3
 
 import (
-	"bytes"
 	"fmt"
 
-	hpke "github.com/cisco/go-hpke"
+	"github.com/cloudflare/circl/hpke"
+	"github.com/cloudflare/circl/kem"
 	"golang.org/x/crypto/cryptobyte"
 )
 
-var (
-	fixedKEM  = hpke.DHKEM_X25519
+const (
+	fixedKEM  = hpke.KEM_X25519_HKDF_SHA256
 	fixedKDF  = hpke.KDF_HKDF_SHA256
-	fixedAEAD = hpke.AEAD_AESGCM128
+	fixedAEAD = hpke.AEAD_AES128GCM
 )
 
 // https://tfpauly.github.io/privacy-proxy/draft-privacypass-rate-limit-tokens.html#name-configuration
 type PrivateEncapKey struct {
 	id         uint8
-	suite      hpke.CipherSuite
-	privateKey hpke.KEMPrivateKey
-	publicKey  hpke.KEMPublicKey
+	suite      hpke.Suite
+	privateKey kem.PrivateKey
+	publicKey  kem.PublicKey
 }
 
 func CreatePrivateEncapKeyFromSeed(seed []byte) (PrivateEncapKey, error) {
-	if len(seed) != 32 {
-		return PrivateEncapKey{}, fmt.Errorf("Invalid seed length, expected 32 bytes")
+	kemScheme := fixedKEM.Scheme()
+	seedSize := kemScheme.SeedSize()
+	if len(seed) != seedSize {
+		return PrivateEncapKey{}, fmt.Errorf("Invalid seed length, expected %v bytes", seedSize)
 	}
 
-	suite, err := hpke.AssembleCipherSuite(fixedKEM, fixedKDF, fixedAEAD)
-	if err != nil {
-		return PrivateEncapKey{}, err
-	}
-
-	sk, pk, err := suite.KEM.DeriveKeyPair(seed)
-	if err != nil {
-		return PrivateEncapKey{}, err
-	}
+	pk, sk := kemScheme.DeriveKeyPair(seed)
+	suite := hpke.NewSuite(fixedKEM, fixedKDF, fixedAEAD)
 
 	return PrivateEncapKey{
 		id:         0x01,
@@ -47,8 +42,8 @@ func CreatePrivateEncapKeyFromSeed(seed []byte) (PrivateEncapKey, error) {
 
 type EncapKey struct {
 	id        uint8
-	suite     hpke.CipherSuite
-	publicKey hpke.KEMPublicKey
+	suite     hpke.Suite
+	publicKey kem.PublicKey
 }
 
 func (k PrivateEncapKey) Public() EncapKey {
@@ -66,11 +61,7 @@ func (k PrivateEncapKey) IsEqual(o PrivateEncapKey) bool {
 	if k.suite != o.suite {
 		return false
 	}
-	if !bytes.Equal(k.suite.KEM.SerializePublicKey(k.publicKey), k.suite.KEM.SerializePublicKey(o.publicKey)) {
-		return false
-	}
-
-	return true
+	return k.publicKey.Equal(o.publicKey)
 }
 
 // opaque HpkePublicKey[Npk]; // defined in I-D.irtf-cfrg-hpke
@@ -86,13 +77,18 @@ func (k PrivateEncapKey) IsEqual(o PrivateEncapKey) bool {
 //	  HpkeAeadId aead_id;
 //	} EncapKey;
 func (k EncapKey) Marshal() []byte {
-	b := cryptobyte.NewBuilder(nil)
+	pkEnc, err := k.publicKey.MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
 
+	kem, kdf, aead := k.suite.Params()
+	b := cryptobyte.NewBuilder(nil)
 	b.AddUint8(k.id)
-	b.AddUint16(uint16(k.suite.KEM.ID()))
-	b.AddBytes(k.suite.KEM.SerializePublicKey(k.publicKey))
-	b.AddUint16(uint16(k.suite.KDF.ID()))
-	b.AddUint16(uint16(k.suite.AEAD.ID()))
+	b.AddUint16(uint16(kem))
+	b.AddBytes(pkEnc)
+	b.AddUint16(uint16(kdf))
+	b.AddUint16(uint16(aead))
 	return b.BytesOrPanic()
 }
 
@@ -100,36 +96,30 @@ func UnmarshalEncapKey(data []byte) (EncapKey, error) {
 	s := cryptobyte.String(data)
 
 	var id uint8
-	var kemID uint16
+	var kemID hpke.KEM
 	if !s.ReadUint8(&id) ||
-		!s.ReadUint16(&kemID) {
+		!s.ReadUint16((*uint16)(&kemID)) ||
+		!kemID.IsValid() {
 		return EncapKey{}, fmt.Errorf("Invalid EncapKey")
 	}
 
-	kem := hpke.KEMID(kemID)
-	suite, err := hpke.AssembleCipherSuite(kem, fixedKDF, fixedAEAD)
-	if err != nil {
-		return EncapKey{}, fmt.Errorf("Invalid EncapKey")
-	}
-
-	publicKeyBytes := make([]byte, suite.KEM.PublicKeySize())
+	kemScheme := kemID.Scheme()
+	publicKeyBytes := make([]byte, kemScheme.PublicKeySize())
 	if !s.ReadBytes(&publicKeyBytes, len(publicKeyBytes)) {
 		return EncapKey{}, fmt.Errorf("Invalid EncapKey")
 	}
 
-	var kdfID uint16
-	var aeadID uint16
-	if !s.ReadUint16(&kdfID) ||
-		!s.ReadUint16(&aeadID) {
+	var kdfID hpke.KDF
+	var aeadID hpke.AEAD
+	if !s.ReadUint16((*uint16)(&kdfID)) ||
+		!s.ReadUint16((*uint16)(&aeadID)) ||
+		!kdfID.IsValid() ||
+		!aeadID.IsValid() {
 		return EncapKey{}, fmt.Errorf("Invalid EncapKey")
 	}
 
-	suite, err = hpke.AssembleCipherSuite(kem, hpke.KDFID(kdfID), hpke.AEADID(aeadID))
-	if err != nil {
-		return EncapKey{}, fmt.Errorf("Invalid EncapKey")
-	}
-
-	publicKey, err := suite.KEM.DeserializePublicKey(publicKeyBytes)
+	suite := hpke.NewSuite(kemID, kdfID, aeadID)
+	publicKey, err := kemScheme.UnmarshalBinaryPublicKey(publicKeyBytes)
 	if err != nil {
 		return EncapKey{}, fmt.Errorf("Invalid EncapKey")
 	}

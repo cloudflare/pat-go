@@ -8,7 +8,6 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 
-	hpke "github.com/cisco/go-hpke"
 	"github.com/cloudflare/circl/blindsign/blindrsa"
 	"github.com/cloudflare/pat-go/ecdsa"
 	"github.com/cloudflare/pat-go/tokens"
@@ -59,16 +58,22 @@ func encryptOriginTokenRequest(nameKey EncapKey, tokenKeyID uint8, blindedMessag
 	issuerKeyEnc := nameKey.Marshal()
 	issuerKeyID := sha256.Sum256(issuerKeyEnc)
 
-	enc, context, err := hpke.SetupBaseS(nameKey.suite, rand.Reader, nameKey.publicKey, []byte("TokenRequest"))
+	kem, kdf, aead := nameKey.suite.Params()
+	snd, err := nameKey.suite.NewSender(nameKey.publicKey, []byte("TokenRequest"))
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	enc, context, err := snd.Setup(rand.Reader)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
 	b := cryptobyte.NewBuilder(nil)
 	b.AddUint8(nameKey.id)
-	b.AddUint16(uint16(nameKey.suite.KEM.ID()))
-	b.AddUint16(uint16(nameKey.suite.KDF.ID()))
-	b.AddUint16(uint16(nameKey.suite.AEAD.ID()))
+	b.AddUint16(uint16(kem))
+	b.AddUint16(uint16(kdf))
+	b.AddUint16(uint16(aead))
 	b.AddUint16(RateLimitedTokenType)
 	b.AddBytes(requestKey)
 	b.AddBytes(issuerKeyID[:])
@@ -82,9 +87,13 @@ func encryptOriginTokenRequest(nameKey EncapKey, tokenKeyID uint8, blindedMessag
 
 	aad := b.BytesOrPanic()
 
-	ct := context.Seal(aad, input)
+	ct, err := context.Seal(input, aad)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
 	encryptedTokenRequest := append(enc, ct...)
-	secret := context.Export([]byte("TokenResponse"), nameKey.suite.AEAD.KeySize())
+	secret := context.Export([]byte("TokenResponse"), aead.KeySize())
 
 	return issuerKeyID[:], encryptedTokenRequest, secret, nil
 }
@@ -115,22 +124,25 @@ func (s RateLimitedTokenRequestState) ClientKey() []byte {
 
 // https://ietf-wg-privacypass.github.io/draft-ietf-privacypass-rate-limit-tokens/draft-ietf-privacypass-rate-limit-tokens.html#name-attester-to-client-response
 func (s RateLimitedTokenRequestState) FinalizeToken(encryptedtokenResponse []byte) (tokens.Token, error) {
+	_, kdf, aead := s.nameKey.suite.Params()
+	keySize := aead.KeySize()
+	nonceSize := aead.NonceSize()
 	// response_nonce = random(max(Nn, Nk)), taken from the encapsualted response
-	responseNonceLen := max(s.nameKey.suite.AEAD.KeySize(), s.nameKey.suite.AEAD.NonceSize())
+	responseNonceLen := max(int(keySize), int(nonceSize))
 
 	// salt = concat(enc, response_nonce)
 	salt := append(s.encapEnc, encryptedtokenResponse[:responseNonceLen]...)
 
-	// prk = Extract(salt, secret)
-	prk := s.nameKey.suite.KDF.Extract(salt, s.encapSecret)
+	// prk = Extract(secret, salt)
+	prk := kdf.Extract(s.encapSecret, salt)
 
 	// aead_key = Expand(prk, "key", Nk)
-	key := s.nameKey.suite.KDF.Expand(prk, []byte(labelResponseKey), s.nameKey.suite.AEAD.KeySize())
+	key := kdf.Expand(prk, []byte(labelResponseKey), keySize)
 
 	// aead_nonce = Expand(prk, "nonce", Nn)
-	nonce := s.nameKey.suite.KDF.Expand(prk, []byte(labelResponseNonce), s.nameKey.suite.AEAD.NonceSize())
+	nonce := kdf.Expand(prk, []byte(labelResponseNonce), nonceSize)
 
-	cipher, err := s.nameKey.suite.AEAD.New(key)
+	cipher, err := aead.New(key)
 	if err != nil {
 		return tokens.Token{}, err
 	}
@@ -249,12 +261,15 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 		Signature:             signature,
 	}
 
+	kem, _, _ := nameKey.suite.Params()
+	pkSize := kem.Scheme().PublicKeySize()
+
 	requestState := RateLimitedTokenRequestState{
 		tokenInput:      tokenInput,
 		clientKey:       clientKeyEnc,
 		request:         request,
 		encapSecret:     secret,
-		encapEnc:        encryptedTokenRequest[0:nameKey.suite.KEM.PublicKeySize()],
+		encapEnc:        encryptedTokenRequest[0:pkSize],
 		nameKey:         nameKey,
 		state:           verifierState,
 		verificationKey: tokenKey,
