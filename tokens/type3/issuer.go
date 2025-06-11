@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"math/big"
 
-	hpke "github.com/cisco/go-hpke"
 	"github.com/cloudflare/circl/blindsign/blindrsa"
+	"github.com/cloudflare/circl/hpke"
 	"github.com/cloudflare/pat-go/ecdsa"
 	"github.com/cloudflare/pat-go/util"
 	"golang.org/x/crypto/cryptobyte"
@@ -24,20 +24,15 @@ type RateLimitedIssuer struct {
 }
 
 func NewRateLimitedIssuer(key *rsa.PrivateKey) *RateLimitedIssuer {
-	suite, err := hpke.AssembleCipherSuite(hpke.DHKEM_X25519, hpke.KDF_HKDF_SHA256, hpke.AEAD_AESGCM128)
+	suite := hpke.NewSuite(hpke.KEM_X25519_HKDF_SHA256, hpke.KDF_HKDF_SHA256, hpke.AEAD_AES128GCM)
+	kem, _, _ := suite.Params()
+	kemScheme := kem.Scheme()
+	ikm := make([]byte, kemScheme.SeedSize())
+	_, err := rand.Reader.Read(ikm)
 	if err != nil {
 		return nil
 	}
-
-	ikm := make([]byte, suite.KEM.PrivateKeySize())
-	_, err = rand.Reader.Read(ikm)
-	if err != nil {
-		return nil
-	}
-	privateKey, publicKey, err := suite.KEM.DeriveKeyPair(ikm)
-	if err != nil {
-		return nil
-	}
+	publicKey, privateKey := kemScheme.DeriveKeyPair(ikm)
 
 	nameKey := PrivateEncapKey{
 		id:         0x00,
@@ -109,23 +104,30 @@ func decryptOriginTokenRequest(nameKey PrivateEncapKey, requestKey []byte, encry
 	// Decrypt the origin name
 	b := cryptobyte.NewBuilder(nil)
 	b.AddUint8(nameKey.id)
-	b.AddUint16(uint16(nameKey.suite.KEM.ID()))
-	b.AddUint16(uint16(nameKey.suite.KDF.ID()))
-	b.AddUint16(uint16(nameKey.suite.AEAD.ID()))
+	kem, kdf, aead := nameKey.suite.Params()
+	b.AddUint16(uint16(kem))
+	b.AddUint16(uint16(kdf))
+	b.AddUint16(uint16(aead))
 	b.AddUint16(RateLimitedTokenType)
 	b.AddBytes(requestKey)
 	b.AddBytes(issuerConfigID[:])
 	aad := b.BytesOrPanic()
 
-	enc := encryptedTokenRequest[0:nameKey.suite.KEM.PublicKeySize()]
-	ct := encryptedTokenRequest[nameKey.suite.KEM.PublicKeySize():]
+	pkSize := kem.Scheme().PublicKeySize()
+	enc := encryptedTokenRequest[0:pkSize]
+	ct := encryptedTokenRequest[pkSize:]
 
-	context, err := hpke.SetupBaseR(nameKey.suite, nameKey.privateKey, enc, []byte("TokenRequest"))
+	rcv, err := nameKey.suite.NewReceiver(nameKey.privateKey, []byte("TokenRequest"))
 	if err != nil {
 		return InnerTokenRequest{}, nil, err
 	}
 
-	tokenRequestEnc, err := context.Open(aad, ct)
+	context, err := rcv.Setup(enc)
+	if err != nil {
+		return InnerTokenRequest{}, nil, err
+	}
+
+	tokenRequestEnc, err := context.Open(ct, aad)
 	if err != nil {
 		return InnerTokenRequest{}, nil, err
 	}
@@ -135,7 +137,7 @@ func decryptOriginTokenRequest(nameKey PrivateEncapKey, requestKey []byte, encry
 		return InnerTokenRequest{}, nil, err
 	}
 
-	secret := context.Export([]byte("TokenResponse"), nameKey.suite.AEAD.KeySize())
+	secret := context.Export([]byte("TokenResponse"), aead.KeySize())
 
 	return *tokenRequest, secret, err
 }
@@ -208,23 +210,25 @@ func (i RateLimitedIssuer) Evaluate(encodedRequest []byte) ([]byte, []byte, erro
 	}
 
 	// Generate a fresh nonce for encrypting the response back to the client
-	responseNonceLen := max(i.nameKey.suite.AEAD.KeySize(), i.nameKey.suite.AEAD.NonceSize())
+	kem, kdf, aead := i.nameKey.suite.Params()
+	responseNonceLen := max(int(aead.KeySize()), int(aead.NonceSize()))
 	responseNonce := make([]byte, responseNonceLen)
 	_, err = rand.Read(responseNonce)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	enc := make([]byte, i.nameKey.suite.KEM.PublicKeySize())
-	copy(enc, req.EncryptedTokenRequest[0:i.nameKey.suite.KEM.PublicKeySize()])
+	pkSize := kem.Scheme().PublicKeySize()
+	enc := make([]byte, pkSize)
+	copy(enc, req.EncryptedTokenRequest[0:pkSize])
 	salt := append(enc, responseNonce...)
 
 	// Derive encryption secrets
-	prk := i.nameKey.suite.KDF.Extract(salt, secret)
-	key := i.nameKey.suite.KDF.Expand(prk, []byte(labelResponseKey), i.nameKey.suite.AEAD.KeySize())
-	nonce := i.nameKey.suite.KDF.Expand(prk, []byte(labelResponseNonce), i.nameKey.suite.AEAD.NonceSize())
+	prk := kdf.Extract(secret, salt)
+	key := kdf.Expand(prk, []byte(labelResponseKey), aead.KeySize())
+	nonce := kdf.Expand(prk, []byte(labelResponseNonce), aead.NonceSize())
 
-	cipher, err := i.nameKey.suite.AEAD.New(key)
+	cipher, err := aead.New(key)
 	if err != nil {
 		return nil, nil, err
 	}
