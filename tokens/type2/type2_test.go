@@ -225,7 +225,15 @@ func generateBasicIssuanceTestVector(t *testing.T, client *BasicPublicClient, is
 	tokenKeyID := issuer.TokenKeyID()
 	tokenPublicKey := issuer.TokenKey()
 
-	requestState, err := client.CreateTokenRequest(challenge, nonce, tokenKeyID, tokenPublicKey)
+	salt := make([]byte, 48)
+	util.MustRead(t, rand.Reader, salt)
+	blindInt, err := rand.Int(rand.Reader, tokenPublicKey.N)
+	if err != nil {
+		t.Error(err)
+	}
+	blind := blindInt.Bytes()
+
+	requestState, err := client.CreateTokenRequestWithBlind(challenge, nonce, tokenKeyID, tokenPublicKey, blind, salt)
 	if err != nil {
 		t.Error(err)
 	}
@@ -245,8 +253,8 @@ func generateBasicIssuanceTestVector(t *testing.T, client *BasicPublicClient, is
 		skS:           issuer.tokenKey,
 		challenge:     challenge,
 		nonce:         nonce,
-		blind:         requestState.verifier.CopyBlind(),
-		salt:          requestState.verifier.CopySalt(),
+		blind:         blind,
+		salt:          salt,
 		tokenRequest:  requestState.Request().Marshal(),
 		tokenResponse: blindedSignature,
 		token:         token.Marshal(),
