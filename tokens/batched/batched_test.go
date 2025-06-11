@@ -399,19 +399,34 @@ func (i innerGenerate) CreateTokenRequest(challenge []byte, nonce nonceOption) (
 		tokenKeyID := issuer.TokenKeyID()
 		tokenPublicKey := issuer.TokenKey()
 
-		requestState, err := client.CreateTokenRequest(challenge, nonce.nonce, tokenKeyID, tokenPublicKey)
+		salt := make([]byte, 48)
+		_, err := rand.Read(salt)
 		if err != nil {
 			return nil, err
 		}
-		state := newTokenRequestStateType2(&requestState)
+		blindInt, err := rand.Int(rand.Reader, tokenPublicKey.N)
+		if err != nil {
+			return nil, err
+		}
+		blind := blindInt.Bytes()
+		requestState, err := client.CreateTokenRequestWithBlind(challenge, nonce.nonce, tokenKeyID, tokenPublicKey, blind, salt)
+		if err != nil {
+			return nil, err
+		}
+		state := newTokenRequestStateType2(&type2BasicPublicTokenRequestState{&requestState, blind, salt})
 		return &state, nil
 	}
 	return nil, errors.New("unreachable")
 }
 
+type type2BasicPublicTokenRequestState struct {
+	reqState    *type2.BasicPublicTokenRequestState
+	blind, salt []byte
+}
+
 type tokenRequestState struct {
 	state1 *type1.BasicPrivateTokenRequestState
-	state2 *type2.BasicPublicTokenRequestState
+	state2 *type2BasicPublicTokenRequestState
 }
 
 func newTokenRequestStateType1(req *type1.BasicPrivateTokenRequestState) tokenRequestState {
@@ -421,7 +436,7 @@ func newTokenRequestStateType1(req *type1.BasicPrivateTokenRequestState) tokenRe
 	}
 }
 
-func newTokenRequestStateType2(req *type2.BasicPublicTokenRequestState) tokenRequestState {
+func newTokenRequestStateType2(req *type2BasicPublicTokenRequestState) tokenRequestState {
 	return tokenRequestState{
 		state1: nil,
 		state2: req,
@@ -435,7 +450,7 @@ func (req tokenRequestState) Request() (tokens.TokenRequestWithDetails, error) {
 		return withPrefix, nil
 	}
 	if req.state2 != nil {
-		req := req.state2.Request()
+		req := req.state2.reqState.Request()
 		var withPrefix tokens.TokenRequestWithDetails = req
 		return withPrefix, nil
 	}
@@ -458,11 +473,10 @@ func (req tokenRequestState) BlindOption() (*blindOption, error) {
 		return &option, nil
 	}
 	if req.state2 != nil {
-		verifier := req.state2.ForTestsOnlyVerifier()
 		option := blindOption{
-			blind:  verifier.CopyBlind(),
+			blind:  req.state2.blind,
 			blinds: nil,
-			salt:   verifier.CopySalt(),
+			salt:   req.state2.salt,
 		}
 		return &option, nil
 	}
@@ -479,7 +493,7 @@ func (req tokenRequestState) FinalizeToken(data []byte) (*tokenOption, error) {
 		return &option, nil
 	}
 	if req.state2 != nil {
-		token, err := req.state2.FinalizeToken(data)
+		token, err := req.state2.reqState.FinalizeToken(data)
 		if err != nil {
 			return nil, err
 		}
@@ -690,7 +704,7 @@ func verifyBasicPrivateIssuanceTestVector(t *testing.T, vector BatchedIssuanceTe
 			if err != nil {
 				t.Error(err)
 			}
-			requestStates[i] = newTokenRequestStateType2(&requestState)
+			requestStates[i] = newTokenRequestStateType2(&type2BasicPublicTokenRequestState{&requestState, issuance.blind, issuance.salt})
 			requests[i] = requestState.Request()
 			tokenGenerate[i] = newInnerGenerateType2(&innerGenerateType2{
 				challenge,
@@ -790,7 +804,8 @@ func TestVectorGenerateBatchedIssuance(t *testing.T) {
 
 			switch challenge.TokenType {
 			case type1.BasicPrivateTokenType:
-				sk, err := oprf.DeriveKey(oprf.SuiteP384, oprf.VerifiableMode, []byte("fixed seed"), challengeEnc)
+				var seed [32]byte
+				sk, err := oprf.DeriveKey(oprf.SuiteP384, oprf.VerifiableMode, seed[:], challengeEnc)
 				if err != nil {
 					t.Fatal(err)
 				}

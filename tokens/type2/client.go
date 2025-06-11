@@ -1,6 +1,7 @@
 package type2
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
@@ -22,19 +23,23 @@ type BasicPublicTokenRequestState struct {
 	tokenInput      []byte
 	request         *BasicPublicTokenRequest
 	verificationKey *rsa.PublicKey
-	verifier        blindrsa.VerifierState
+	state           blindrsa.State
 }
 
 func (s BasicPublicTokenRequestState) Request() *BasicPublicTokenRequest {
 	return s.request
 }
 
-func (s BasicPublicTokenRequestState) ForTestsOnlyVerifier() blindrsa.VerifierState {
-	return s.verifier
+func (s BasicPublicTokenRequestState) ForTestsOnlyVerifier() blindrsa.State {
+	return s.state
 }
 
 func (s BasicPublicTokenRequestState) FinalizeToken(blindSignature []byte) (tokens.Token, error) {
-	signature, err := s.verifier.Finalize(blindSignature)
+	verifier, err := blindrsa.NewClient(blindrsa.SHA384PSSDeterministic, s.verificationKey)
+	if err != nil {
+		return tokens.Token{}, err
+	}
+	signature, err := verifier.Finalize(s.state, blindSignature)
 	if err != nil {
 		return tokens.Token{}, err
 	}
@@ -66,7 +71,10 @@ func (s BasicPublicTokenRequestState) FinalizeToken(blindSignature []byte) (toke
 
 // https://ietf-wg-privacypass.github.io/base-drafts/caw/pp-issuance/draft-ietf-privacypass-protocol.html#name-issuance-protocol-for-publi
 func (c BasicPublicClient) CreateTokenRequest(challenge, nonce []byte, tokenKeyID []byte, tokenKey *rsa.PublicKey) (BasicPublicTokenRequestState, error) {
-	verifier := blindrsa.NewVerifier(tokenKey, crypto.SHA384)
+	verifier, err := blindrsa.NewClient(blindrsa.SHA384PSSDeterministic, tokenKey)
+	if err != nil {
+		return BasicPublicTokenRequestState{}, err
+	}
 
 	context := sha256.Sum256(challenge)
 	token := tokens.Token{
@@ -77,8 +85,11 @@ func (c BasicPublicClient) CreateTokenRequest(challenge, nonce []byte, tokenKeyI
 		Authenticator: nil, // No signature computed yet
 	}
 	tokenInput := token.AuthenticatorInput()
-
-	blindedMessage, verifierState, err := verifier.Blind(rand.Reader, tokenInput)
+	preparedMsg, err := verifier.Prepare(rand.Reader, tokenInput)
+	if err != nil {
+		return BasicPublicTokenRequestState{}, err
+	}
+	blindedMessage, verifierState, err := verifier.Blind(rand.Reader, preparedMsg)
 	if err != nil {
 		return BasicPublicTokenRequestState{}, err
 	}
@@ -91,7 +102,7 @@ func (c BasicPublicClient) CreateTokenRequest(challenge, nonce []byte, tokenKeyI
 	requestState := BasicPublicTokenRequestState{
 		tokenInput:      tokenInput,
 		request:         request,
-		verifier:        verifierState,
+		state:           verifierState,
 		verificationKey: tokenKey,
 	}
 
@@ -99,7 +110,10 @@ func (c BasicPublicClient) CreateTokenRequest(challenge, nonce []byte, tokenKeyI
 }
 
 func (c BasicPublicClient) CreateTokenRequestWithBlind(challenge, nonce []byte, tokenKeyID []byte, tokenKey *rsa.PublicKey, blind, salt []byte) (BasicPublicTokenRequestState, error) {
-	verifier := blindrsa.NewVerifier(tokenKey, crypto.SHA384)
+	client, err := blindrsa.NewClient(blindrsa.SHA384PSSDeterministic, tokenKey)
+	if err != nil {
+		return BasicPublicTokenRequestState{}, err
+	}
 
 	context := sha256.Sum256(challenge)
 	token := tokens.Token{
@@ -110,7 +124,13 @@ func (c BasicPublicClient) CreateTokenRequestWithBlind(challenge, nonce []byte, 
 		Authenticator: nil, // No signature computed yet
 	}
 	tokenInput := token.AuthenticatorInput()
-	blindedMessage, verifierState, err := verifier.FixedBlind(tokenInput, blind, salt)
+	preparedMsg, err := client.Prepare(rand.Reader, tokenInput)
+	if err != nil {
+		return BasicPublicTokenRequestState{}, err
+	}
+
+	mockSalt := bytes.NewBuffer(append(salt, blind...))
+	blindedMessage, verifierState, err := client.Blind(mockSalt, preparedMsg)
 	if err != nil {
 		return BasicPublicTokenRequestState{}, err
 	}
@@ -123,7 +143,7 @@ func (c BasicPublicClient) CreateTokenRequestWithBlind(challenge, nonce []byte, 
 	requestState := BasicPublicTokenRequestState{
 		tokenInput:      tokenInput,
 		request:         request,
-		verifier:        verifierState,
+		state:           verifierState,
 		verificationKey: tokenKey,
 	}
 

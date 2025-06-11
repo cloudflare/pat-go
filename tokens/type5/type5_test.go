@@ -298,7 +298,9 @@ func TestVectorGenerateBatchedPrivateIssuance(t *testing.T) {
 		challenge := challenges[i]
 		challengeEnc := challenge.Marshal()
 
-		tokenKey, err := oprf.DeriveKey(oprf.SuiteRistretto255, oprf.VerifiableMode, []byte("fixed seed"), challengeEnc)
+		var seed [32]byte
+		util.MustRead(t, rand.Reader, seed[:])
+		tokenKey, err := oprf.DeriveKey(oprf.SuiteRistretto255, oprf.VerifiableMode, seed[:], challengeEnc)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -98,7 +98,7 @@ type RateLimitedTokenRequestState struct {
 	encapEnc          []byte
 	nameKey           EncapKey
 	verificationKey   *rsa.PublicKey
-	verifier          blindrsa.VerifierState
+	state             blindrsa.State
 }
 
 func (s RateLimitedTokenRequestState) Request() *RateLimitedTokenRequest {
@@ -141,7 +141,11 @@ func (s RateLimitedTokenRequestState) FinalizeToken(encryptedtokenResponse []byt
 		return tokens.Token{}, err
 	}
 
-	signature, err := s.verifier.Finalize(blindSignature)
+	client, err := blindrsa.NewClient(blindrsa.SHA384PSSDeterministic, s.verificationKey)
+	if err != nil {
+		return tokens.Token{}, err
+	}
+	signature, err := client.Finalize(s.state, blindSignature)
 	if err != nil {
 		return tokens.Token{}, err
 	}
@@ -190,7 +194,10 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 	}
 	blindedPublicKeyEnc := elliptic.MarshalCompressed(c.curve, blindedPublicKey.X, blindedPublicKey.Y)
 
-	verifier := blindrsa.NewVerifier(tokenKey, crypto.SHA384)
+	verifier, err := blindrsa.NewClient(blindrsa.SHA384PSSDeterministic, tokenKey)
+	if err != nil {
+		return RateLimitedTokenRequestState{}, err
+	}
 
 	context := sha256.Sum256(challenge)
 	token := tokens.Token{
@@ -249,7 +256,7 @@ func (c RateLimitedClient) CreateTokenRequest(challenge, nonce, blindKeyEnc []by
 		encapSecret:     secret,
 		encapEnc:        encryptedTokenRequest[0:nameKey.suite.KEM.PublicKeySize()],
 		nameKey:         nameKey,
-		verifier:        verifierState,
+		state:           verifierState,
 		verificationKey: tokenKey,
 	}
 
