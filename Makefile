@@ -22,9 +22,13 @@ test_token:
 test_type1:
 	TYPE1_ISSUANCE_TEST_VECTORS_IN=type1-issuance-test-vectors.json \
 	go test -v --count=1 ./tokens/type1/...
+	TYPE1_ISSUANCE_TEST_VECTORS_IN=type1-issuance-test-vectors.rust.json \
+	go test -v --count=1 ./tokens/type1/...
 
 test_type2:
 	TYPE2_ISSUANCE_TEST_VECTORS_IN=type2-issuance-test-vectors.json \
+	go test -v --count=1 ./tokens/type2/...
+	TYPE2_ISSUANCE_TEST_VECTORS_IN=type2-issuance-test-vectors.rust.json \
 	go test -v --count=1 ./tokens/type2/...
 
 test_type3:
@@ -37,9 +41,11 @@ test_type3:
 test_type5:
 	TYPE5_ISSUANCE_TEST_VECTORS_IN=type5-issuance-test-vectors.json \
 	go test -v --count=1 ./tokens/type5/...
+	TYPE5_ISSUANCE_TEST_VECTORS_IN=type5-issuance-test-vectors.rust.json \
+	go test -v --count=1 ./tokens/type5/...
 
 test_typeBatched:
 	BATCHED_ISSUANCE_TEST_VECTORS_IN=batched-issuance-test-vectors.json \
 	go test -v --count=1 ./tokens/batched/...
-	BATCHED_ISSUANCE_TEST_VECTORS_IN=batched-issuance-test-vectors-rust.json \
+	BATCHED_ISSUANCE_TEST_VECTORS_IN=batched-issuance-test-vectors.rust.json \
 	go test -v --count=1 ./tokens/batched/...
