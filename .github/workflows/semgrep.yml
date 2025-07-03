@@ -11,6 +11,9 @@ name: Semgrep config
 jobs:
   semgrep:
     name: semgrep/ci
+    permissions:
+      contents: read
+      pull-requests: write
     runs-on: ubuntu-latest
     if: github.repository == 'cloudflare/pat-go'
     env:
