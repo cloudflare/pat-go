@@ -1,4 +1,4 @@
-package type1
+package private
 
 import (
 	"bytes"
@@ -11,12 +11,21 @@ import (
 )
 
 type BasicPrivateIssuer struct {
-	tokenKey *oprf.PrivateKey
+	tokenType uint16
+	tokenKey  *oprf.PrivateKey
 }
 
 func NewBasicPrivateIssuer(key *oprf.PrivateKey) *BasicPrivateIssuer {
 	return &BasicPrivateIssuer{
-		tokenKey: key,
+		tokenType: BasicPrivateTokenType,
+		tokenKey:  key,
+	}
+}
+
+func NewRistrettoPrivateIssuer(key *oprf.PrivateKey) *BasicPrivateIssuer {
+	return &BasicPrivateIssuer{
+		tokenType: RistrettoPrivateTokenType,
+		tokenKey:  key,
 	}
 }
 
@@ -34,7 +43,17 @@ func (i *BasicPrivateIssuer) TokenKeyID() []byte {
 }
 
 func (i BasicPrivateIssuer) Evaluate(req *BasicPrivateTokenRequest) ([]byte, error) {
-	server := oprf.NewVerifiableServer(oprf.SuiteP384, i.tokenKey)
+	var s oprf.Suite
+	switch i.tokenType {
+	case BasicPrivateTokenType:
+		s = oprf.SuiteP384
+	case RistrettoPrivateTokenType:
+		s = oprf.SuiteRistretto255
+	default:
+		return nil, fmt.Errorf("no suite associated to the request token type")
+	}
+
+	server := oprf.NewVerifiableServer(s, i.tokenKey)
 
 	e := group.P384.NewElement()
 	err := e.UnmarshalBinary(req.BlindedReq)
@@ -67,11 +86,21 @@ func (i BasicPrivateIssuer) Evaluate(req *BasicPrivateTokenRequest) ([]byte, err
 }
 
 func (i BasicPrivateIssuer) Type() uint16 {
-	return BasicPrivateTokenType
+	return i.tokenType
 }
 
 func (i BasicPrivateIssuer) Verify(token tokens.Token) error {
-	server := oprf.NewVerifiableServer(oprf.SuiteP384, i.tokenKey)
+	var s oprf.Suite
+	switch i.tokenType {
+	case BasicPrivateTokenType:
+		s = oprf.SuiteP384
+	case RistrettoPrivateTokenType:
+		s = oprf.SuiteRistretto255
+	default:
+		return fmt.Errorf("no suite associated to the request token type")
+	}
+
+	server := oprf.NewVerifiableServer(s, i.tokenKey)
 
 	tokenInput := token.AuthenticatorInput()
 	output, err := server.FullEvaluate(tokenInput)

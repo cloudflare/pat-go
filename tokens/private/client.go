@@ -1,7 +1,8 @@
-package type1
+package private
 
 import (
 	"crypto/sha256"
+	"fmt"
 
 	"github.com/cloudflare/circl/group"
 	"github.com/cloudflare/circl/oprf"
@@ -10,10 +11,15 @@ import (
 )
 
 type BasicPrivateClient struct {
+	tokenType uint16
 }
 
 func NewBasicPrivateClient() BasicPrivateClient {
-	return BasicPrivateClient{}
+	return BasicPrivateClient{tokenType: BasicPrivateTokenType}
+}
+
+func NewRistrettoPrivateClient() BasicPrivateClient {
+	return BasicPrivateClient{tokenType: RistrettoPrivateTokenType}
 }
 
 type BasicPrivateTokenRequestState struct {
@@ -33,14 +39,24 @@ func (s BasicPrivateTokenRequestState) ForTestsOnlyVerifier() *oprf.FinalizeData
 }
 
 func (s BasicPrivateTokenRequestState) FinalizeToken(tokenResponseEnc []byte) (tokens.Token, error) {
-	evaluatedElement := group.P384.NewElement()
-	err := evaluatedElement.UnmarshalBinary(tokenResponseEnc[:group.P384.Params().CompressedElementLength])
+	var g group.Group
+
+	switch s.request.Type() {
+	case BasicPrivateTokenType:
+		g = group.P384
+	case RistrettoPrivateTokenType:
+		g = group.Ristretto255
+	default:
+		return tokens.Token{}, fmt.Errorf("no group associated to the request token type")
+	}
+	evaluatedElement := g.NewElement()
+	err := evaluatedElement.UnmarshalBinary(tokenResponseEnc[:g.Params().CompressedElementLength])
 	if err != nil {
 		return tokens.Token{}, err
 	}
 
 	proof := new(dleq.Proof)
-	err = proof.UnmarshalBinary(group.P384, tokenResponseEnc[group.P384.Params().CompressedElementLength:])
+	err = proof.UnmarshalBinary(group.P384, tokenResponseEnc[g.Params().CompressedElementLength:])
 	if err != nil {
 		return tokens.Token{}, err
 	}
@@ -65,11 +81,20 @@ func (s BasicPrivateTokenRequestState) FinalizeToken(tokenResponseEnc []byte) (t
 
 // https://ietf-wg-privacypass.github.io/base-drafts/caw/pp-issuance/draft-ietf-privacypass-protocol.html#name-issuance-protocol-for-publi
 func (c BasicPrivateClient) CreateTokenRequest(challenge, nonce []byte, tokenKeyID []byte, verificationKey *oprf.PublicKey) (BasicPrivateTokenRequestState, error) {
-	client := oprf.NewVerifiableClient(oprf.SuiteP384, verificationKey)
+	var s oprf.Suite
+	switch c.tokenType {
+	case BasicPrivateTokenType:
+		s = oprf.SuiteP384
+	case RistrettoPrivateTokenType:
+		s = oprf.SuiteRistretto255
+	default:
+		return BasicPrivateTokenRequestState{}, fmt.Errorf("no suite associated to the request token type")
+	}
+	client := oprf.NewVerifiableClient(s, verificationKey)
 
 	context := sha256.Sum256(challenge)
 	token := tokens.Token{
-		TokenType:     BasicPrivateTokenType,
+		TokenType:     c.tokenType,
 		Nonce:         nonce,
 		Context:       context[:],
 		KeyID:         tokenKeyID,
@@ -102,11 +127,20 @@ func (c BasicPrivateClient) CreateTokenRequest(challenge, nonce []byte, tokenKey
 }
 
 func (c BasicPrivateClient) CreateTokenRequestWithBlind(challenge, nonce []byte, tokenKeyID []byte, verificationKey *oprf.PublicKey, blindEnc []byte) (BasicPrivateTokenRequestState, error) {
-	client := oprf.NewVerifiableClient(oprf.SuiteP384, verificationKey)
+	var s oprf.Suite
+	switch c.tokenType {
+	case BasicPrivateTokenType:
+		s = oprf.SuiteP384
+	case RistrettoPrivateTokenType:
+		s = oprf.SuiteRistretto255
+	default:
+		return BasicPrivateTokenRequestState{}, fmt.Errorf("no suite associated to the request token type")
+	}
+	client := oprf.NewVerifiableClient(s, verificationKey)
 
 	context := sha256.Sum256(challenge)
 	token := tokens.Token{
-		TokenType:     BasicPrivateTokenType,
+		TokenType:     c.tokenType,
 		Nonce:         nonce,
 		Context:       context[:],
 		KeyID:         tokenKeyID,

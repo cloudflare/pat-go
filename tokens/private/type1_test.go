@@ -1,4 +1,4 @@
-package type1
+package private
 
 import (
 	"bytes"

@@ -1,4 +1,4 @@
-package type1
+package amortized
 
 import (
 	"fmt"
@@ -7,10 +7,7 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 )
 
-const Nk int = 48 // defined in RFC 9578 Section 8.2.1 https://datatracker.ietf.org/doc/html/rfc9578#name-token-type-voprfp-384-sha-3
-const Ne int = 49 // defined in RFC 9497 Section 4.4   https://datatracker.ietf.org/doc/html/rfc9497#name-oprfp-384-sha-384
-
-func UnmarshalPrivateToken(data []byte) (tokens.Token, error) {
+func UnmarshalBatchedPrivateToken(data []byte) (tokens.Token, error) {
 	s := cryptobyte.String(data)
 
 	token := tokens.Token{}
@@ -18,7 +15,7 @@ func UnmarshalPrivateToken(data []byte) (tokens.Token, error) {
 		!s.ReadBytes(&token.Nonce, 32) ||
 		!s.ReadBytes(&token.Context, 32) ||
 		!s.ReadBytes(&token.KeyID, 32) ||
-		!s.ReadBytes(&token.Authenticator, Nk) {
+		!s.ReadBytes(&token.Authenticator, 64) {
 		return tokens.Token{}, fmt.Errorf("invalid Token encoding")
 	}
 

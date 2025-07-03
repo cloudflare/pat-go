@@ -16,9 +16,9 @@ import (
 
 	"github.com/cloudflare/circl/oprf"
 	"github.com/cloudflare/pat-go/tokens"
+	"github.com/cloudflare/pat-go/tokens/amortized"
 	"github.com/cloudflare/pat-go/tokens/type1"
 	"github.com/cloudflare/pat-go/tokens/type2"
-	"github.com/cloudflare/pat-go/tokens/type5"
 	"github.com/cloudflare/pat-go/util"
 	"golang.org/x/crypto/hkdf"
 )
@@ -118,7 +118,7 @@ func (i basicIssuer[T]) TokenKeyID() []byte {
 		return inner.TokenKeyID()
 	case type2.BasicPublicIssuer:
 		return inner.TokenKeyID()
-	case type5.BatchedPrivateIssuer:
+	case amortized.BatchedPrivateIssuer:
 		return inner.TokenKeyID()
 	default:
 		panic("unreachable")
