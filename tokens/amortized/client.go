@@ -108,7 +108,7 @@ func (s AmortizedPrivateTokenRequestState) FinalizeTokens(tokenResponseEnc []byt
 	tokens := make([]tokens.Token, numElements)
 	for i := 0; i < numElements; i++ {
 		tokenData := append(s.tokenInputs[i], outputs[i]...)
-		tokens[i], err = UnmarshalBatchedPrivateToken(tokenData)
+		tokens[i], err = private.UnmarshalPrivateToken(tokenData)
 		if err != nil {
 			return nil, err
 		}
@@ -162,6 +162,7 @@ func (c AmortizedPrivateClient) CreateTokenRequest(challenge []byte, nonce [][]b
 	}
 
 	request := &AmortizedPrivateTokenRequest{
+		tokenType:  c.tokenType,
 		TokenKeyID: tokenKeyID[len(tokenKeyID)-1],
 		BlindedReq: encodedElements,
 	}
@@ -205,7 +206,7 @@ func (c AmortizedPrivateClient) CreateTokenRequestWithBlinds(challenge []byte, n
 		tokenInputs[i] = make([]byte, len(tokenInput))
 		copy(tokenInputs[i], tokenInput)
 
-		blinds[i] = group.Ristretto255.NewScalar()
+		blinds[i] = s.Group().NewScalar()
 		err := blinds[i].UnmarshalBinary(encodedBlinds[i])
 		if err != nil {
 			return AmortizedPrivateTokenRequestState{}, err
@@ -228,6 +229,7 @@ func (c AmortizedPrivateClient) CreateTokenRequestWithBlinds(challenge []byte, n
 	}
 
 	request := &AmortizedPrivateTokenRequest{
+		tokenType:  c.tokenType,
 		TokenKeyID: tokenKeyID[len(tokenKeyID)-1],
 		BlindedReq: encodedElements,
 	}

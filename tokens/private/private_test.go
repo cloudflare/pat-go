@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 
@@ -16,8 +18,10 @@ import (
 )
 
 const (
-	outputBasicPrivateIssuanceTestVectorEnvironmentKey = "TYPE1_ISSUANCE_TEST_VECTORS_OUT"
-	inputBasicPrivateIssuanceTestVectorEnvironmentKey  = "TYPE1_ISSUANCE_TEST_VECTORS_IN"
+	outputBasicPrivateIssuanceTestVectorEnvironmentKey     = "TYPE1_ISSUANCE_TEST_VECTORS_OUT"
+	inputBasicPrivateIssuanceTestVectorEnvironmentKey      = "TYPE1_ISSUANCE_TEST_VECTORS_IN"
+	outputRistrettoPrivateIssuanceTestVectorEnvironmentKey = "TYPE5_ISSUANCE_TEST_VECTORS_OUT"
+	inputRistrettoPrivateIssuanceTestVectorEnvironmentKey  = "TYPE5_ISSUANCE_TEST_VECTORS_IN"
 )
 
 func createTokenChallenge(tokenType uint16, redemptionContext []byte, issuerName string, originInfo []string) tokens.TokenChallenge {
@@ -135,7 +139,6 @@ func (etv *BasicPrivateIssuanceTestVector) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	etv.skS = util.MustUnmarshalPrivateOPRFKey(util.MustUnhex(nil, raw.PrivateKey))
 	etv.challenge = util.MustUnhex(nil, raw.Challenge)
 	etv.nonce = util.MustUnhex(nil, raw.Nonce)
 	etv.blind = util.MustUnhex(nil, raw.Blind)
@@ -143,7 +146,20 @@ func (etv *BasicPrivateIssuanceTestVector) UnmarshalJSON(data []byte) error {
 	etv.tokenResponse = util.MustUnhex(nil, raw.TokenResponse)
 	etv.token = util.MustUnhex(nil, raw.Token)
 
+	skS := util.MustUnhex(nil, raw.PrivateKey)
+	switch etv.TokenType() {
+	case BasicPrivateTokenType:
+		etv.skS = util.MustUnmarshalPrivateOPRFKey(skS)
+	case RistrettoPrivateTokenType:
+		etv.skS = util.MustUnmarshalBatchedPrivateOPRFKey(skS)
+	default:
+		return fmt.Errorf("invalid private key format")
+	}
 	return nil
+}
+
+func (etv *BasicPrivateIssuanceTestVector) TokenType() uint16 {
+	return binary.BigEndian.Uint16(etv.tokenRequest[:2])
 }
 
 func generateBasicPrivateIssuanceBlindingTestVector(t *testing.T, client *BasicPrivateClient, issuer *BasicPrivateIssuer, tokenChallenge tokens.TokenChallenge) BasicPrivateIssuanceTestVector {
@@ -189,8 +205,18 @@ func generateBasicPrivateIssuanceBlindingTestVector(t *testing.T, client *BasicP
 }
 
 func verifyBasicPrivateIssuanceTestVector(t *testing.T, vector BasicPrivateIssuanceTestVector) {
-	issuer := NewBasicPrivateIssuer(vector.skS)
-	client := BasicPrivateClient{}
+	var issuer *BasicPrivateIssuer
+	var client BasicPrivateClient
+	switch vector.TokenType() {
+	case BasicPrivateTokenType:
+		issuer = NewBasicPrivateIssuer(vector.skS)
+		client = NewBasicPrivateClient()
+	case RistrettoPrivateTokenType:
+		issuer = NewRistrettoPrivateIssuer(vector.skS)
+		client = NewRistrettoPrivateClient()
+	default:
+		t.Error(fmt.Errorf("invalid token type"))
+	}
 
 	tokenKeyID := issuer.TokenKeyID()
 	tokenPublicKey := issuer.TokenKey()
@@ -211,6 +237,7 @@ func verifyBasicPrivateIssuanceTestVector(t *testing.T, vector BasicPrivateIssua
 	}
 
 	if !bytes.Equal(token.Marshal(), vector.token) {
+		fmt.Printf("%v\n%v\n", util.MustHex(token.Marshal()), util.MustHex(vector.token))
 		t.Fatal("Token mismatch")
 	}
 }
@@ -256,9 +283,9 @@ func TestVectorGenerateBasicPrivateIssuance(t *testing.T) {
 		}
 
 		issuer := NewBasicPrivateIssuer(tokenKey)
-		client := &BasicPrivateClient{}
+		client := NewBasicPrivateClient()
 
-		vectors[i] = generateBasicPrivateIssuanceBlindingTestVector(t, client, issuer, challenge)
+		vectors[i] = generateBasicPrivateIssuanceBlindingTestVector(t, &client, issuer, challenge)
 	}
 
 	// Encode the test vectors
@@ -279,9 +306,75 @@ func TestVectorGenerateBasicPrivateIssuance(t *testing.T) {
 	}
 }
 
+func TestVectorGenerateRistrettoPrivateIssuance(t *testing.T) {
+	hash := sha256.New
+	secret := []byte("test vector secret")
+	hkdf := hkdf.New(hash, secret, nil, []byte{0x00, byte(RistrettoPrivateTokenType & 0xFF)})
+
+	redemptionContext := make([]byte, 32)
+	util.MustRead(t, hkdf, redemptionContext)
+
+	challenges := []tokens.TokenChallenge{
+		createTokenChallenge(RistrettoPrivateTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
+		createTokenChallenge(RistrettoPrivateTokenType, nil, "issuer.example", []string{"origin.example"}),
+		createTokenChallenge(RistrettoPrivateTokenType, nil, "issuer.example", []string{"foo.example,bar.example"}),
+		createTokenChallenge(RistrettoPrivateTokenType, nil, "issuer.example", []string{}),
+		createTokenChallenge(RistrettoPrivateTokenType, redemptionContext, "issuer.example", []string{}),
+	}
+
+	vectors := make([]BasicPrivateIssuanceTestVector, len(challenges))
+	for i := 0; i < len(challenges); i++ {
+		challenge := challenges[i]
+		challengeEnc := challenge.Marshal()
+
+		var seed [32]byte
+		util.MustRead(t, hkdf, seed[:])
+		tokenKey, err := oprf.DeriveKey(oprf.SuiteRistretto255, oprf.VerifiableMode, seed[:], challengeEnc)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		issuer := NewRistrettoPrivateIssuer(tokenKey)
+		client := NewRistrettoPrivateClient()
+
+		vectors[i] = generateBasicPrivateIssuanceBlindingTestVector(t, &client, issuer, challenge)
+	}
+
+	// Encode the test vectors
+	encoded, err := json.Marshal(vectors)
+	if err != nil {
+		t.Fatalf("Error producing test vectors: %v", err)
+	}
+
+	// Verify that we process them correctly
+	verifyBasicPrivateIssuanceTestVectors(t, encoded)
+
+	var outputFile string
+	if outputFile = os.Getenv(outputRistrettoPrivateIssuanceTestVectorEnvironmentKey); len(outputFile) > 0 {
+		err := os.WriteFile(outputFile, encoded, 0644)
+		if err != nil {
+			t.Fatalf("Error writing test vectors: %v", err)
+		}
+	}
+}
+
 func TestVectorVerifyBasicPrivateIssuance(t *testing.T) {
 	var inputFile string
 	if inputFile = os.Getenv(inputBasicPrivateIssuanceTestVectorEnvironmentKey); len(inputFile) == 0 {
+		t.Skip("Test vectors were not provided")
+	}
+
+	encoded, err := os.ReadFile(inputFile)
+	if err != nil {
+		t.Fatalf("Failed reading test vectors: %v", err)
+	}
+
+	verifyBasicPrivateIssuanceTestVectors(t, encoded)
+}
+
+func TestVectorVerifyRistrettoPrivateIssuance(t *testing.T) {
+	var inputFile string
+	if inputFile = os.Getenv(inputRistrettoPrivateIssuanceTestVectorEnvironmentKey); len(inputFile) == 0 {
 		t.Skip("Test vectors were not provided")
 	}
 

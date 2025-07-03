@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/cloudflare/pat-go/tokens"
-	"github.com/cloudflare/pat-go/tokens/type1"
+	"github.com/cloudflare/pat-go/tokens/private"
 	"github.com/cloudflare/pat-go/tokens/type2"
 )
 
@@ -23,9 +23,14 @@ func (c BatchedClient) CreateTokenRequest(tokenRequests []tokens.TokenRequestWit
 
 	for _, tokenRequest := range tokenRequests {
 		switch tokenRequest.Type() {
-		case type1.BasicPrivateTokenType:
-			casted, ok := tokenRequest.(*type1.BasicPrivateTokenRequest)
-			if !ok || casted.Type() != type1.BasicPrivateTokenType {
+		case private.BasicPrivateTokenType:
+			casted, ok := tokenRequest.(*private.BasicPrivateTokenRequest)
+			if !ok || casted.Type() != private.BasicPrivateTokenType {
+				return nil, fmt.Errorf("invalid token request type")
+			}
+		case private.RistrettoPrivateTokenType:
+			casted, ok := tokenRequest.(*private.BasicPrivateTokenRequest)
+			if !ok || casted.Type() != private.RistrettoPrivateTokenType {
 				return nil, fmt.Errorf("invalid token request type")
 			}
 		case type2.BasicPublicTokenType:

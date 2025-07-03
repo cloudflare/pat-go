@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/cloudflare/pat-go/quicwire"
-	"github.com/cloudflare/pat-go/tokens/type1"
+	"github.com/cloudflare/pat-go/tokens/private"
 	"github.com/cloudflare/pat-go/tokens/type2"
 	"golang.org/x/crypto/cryptobyte"
 )
@@ -37,8 +37,10 @@ func UnmarshalBatchedTokenResponses(data []byte) ([][]byte, error) {
 
 			var token_response_length uint16
 			switch token_type {
-			case type1.BasicPrivateTokenType:
-				token_response_length = uint16(type1.Ne + 2*type1.Nk) // Ne + 2*Ns
+			case private.BasicPrivateTokenType:
+				token_response_length = uint16(private.BasicNe + 2*private.BasicNk) // Ne + 2*Ns
+			case private.RistrettoPrivateTokenType:
+				token_response_length = uint16(private.RistrettoNe + 2*private.RistrettoNk) // Ne + 2*Ns
 			case type2.BasicPublicTokenType:
 				token_response_length = uint16(type2.Nk) // Nk
 			default:

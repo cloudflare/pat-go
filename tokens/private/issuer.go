@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"fmt"
 
-	"github.com/cloudflare/circl/group"
 	"github.com/cloudflare/circl/oprf"
 	"github.com/cloudflare/pat-go/tokens"
 )
@@ -55,7 +54,7 @@ func (i BasicPrivateIssuer) Evaluate(req *BasicPrivateTokenRequest) ([]byte, err
 
 	server := oprf.NewVerifiableServer(s, i.tokenKey)
 
-	e := group.P384.NewElement()
+	e := s.Group().NewElement()
 	err := e.UnmarshalBinary(req.BlindedReq)
 	if err != nil {
 		return nil, err

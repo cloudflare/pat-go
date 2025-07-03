@@ -56,7 +56,7 @@ func (s BasicPrivateTokenRequestState) FinalizeToken(tokenResponseEnc []byte) (t
 	}
 
 	proof := new(dleq.Proof)
-	err = proof.UnmarshalBinary(group.P384, tokenResponseEnc[g.Params().CompressedElementLength:])
+	err = proof.UnmarshalBinary(g, tokenResponseEnc[g.Params().CompressedElementLength:])
 	if err != nil {
 		return tokens.Token{}, err
 	}
@@ -111,6 +111,7 @@ func (c BasicPrivateClient) CreateTokenRequest(challenge, nonce []byte, tokenKey
 		return BasicPrivateTokenRequestState{}, err
 	}
 	request := &BasicPrivateTokenRequest{
+		tokenType:  c.tokenType,
 		TokenKeyID: tokenKeyID[len(tokenKeyID)-1],
 		BlindedReq: encRequest,
 	}
@@ -148,7 +149,7 @@ func (c BasicPrivateClient) CreateTokenRequestWithBlind(challenge, nonce []byte,
 	}
 	tokenInput := token.AuthenticatorInput()
 
-	blind := group.P384.NewScalar()
+	blind := s.Group().NewScalar()
 	err := blind.UnmarshalBinary(blindEnc)
 	if err != nil {
 		return BasicPrivateTokenRequestState{}, err
@@ -164,6 +165,7 @@ func (c BasicPrivateClient) CreateTokenRequestWithBlind(challenge, nonce []byte,
 		return BasicPrivateTokenRequestState{}, err
 	}
 	request := &BasicPrivateTokenRequest{
+		tokenType:  c.tokenType,
 		TokenKeyID: tokenKeyID[len(tokenKeyID)-1],
 		BlindedReq: encRequest,
 	}

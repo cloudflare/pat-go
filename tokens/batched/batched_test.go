@@ -16,8 +16,7 @@ import (
 
 	"github.com/cloudflare/circl/oprf"
 	"github.com/cloudflare/pat-go/tokens"
-	"github.com/cloudflare/pat-go/tokens/amortized"
-	"github.com/cloudflare/pat-go/tokens/type1"
+	"github.com/cloudflare/pat-go/tokens/private"
 	"github.com/cloudflare/pat-go/tokens/type2"
 	"github.com/cloudflare/pat-go/util"
 	"golang.org/x/crypto/hkdf"
@@ -83,11 +82,11 @@ func createTokenChallenge(tokenType uint16, redemptionContext []byte, issuerName
 	return challenge
 }
 
-type basicIssuer[T type1.BasicPrivateIssuer | type2.BasicPublicIssuer] struct {
+type basicIssuer[T private.BasicPrivateIssuer | type2.BasicPublicIssuer] struct {
 	inner T
 }
 
-func newBasicIssuer[T type1.BasicPrivateIssuer | type2.BasicPublicIssuer](inner T) basicIssuer[T] {
+func newBasicIssuer[T private.BasicPrivateIssuer | type2.BasicPublicIssuer](inner T) basicIssuer[T] {
 	return basicIssuer[T]{
 		inner,
 	}
@@ -95,8 +94,8 @@ func newBasicIssuer[T type1.BasicPrivateIssuer | type2.BasicPublicIssuer](inner 
 
 func (i basicIssuer[T]) Evaluate(req tokens.TokenRequest) ([]byte, error) {
 	switch inner := any(i.inner).(type) {
-	case type1.BasicPrivateIssuer:
-		req, ok := req.(*type1.BasicPrivateTokenRequest)
+	case private.BasicPrivateIssuer:
+		req, ok := req.(*private.BasicPrivateTokenRequest)
 		if !ok {
 			return nil, errors.New("TokenRequest does not match issuer type")
 		}
@@ -114,11 +113,9 @@ func (i basicIssuer[T]) Evaluate(req tokens.TokenRequest) ([]byte, error) {
 
 func (i basicIssuer[T]) TokenKeyID() []byte {
 	switch inner := any(i.inner).(type) {
-	case type1.BasicPrivateIssuer:
+	case private.BasicPrivateIssuer:
 		return inner.TokenKeyID()
 	case type2.BasicPublicIssuer:
-		return inner.TokenKeyID()
-	case amortized.BatchedPrivateIssuer:
 		return inner.TokenKeyID()
 	default:
 		panic("unreachable")
@@ -127,7 +124,7 @@ func (i basicIssuer[T]) TokenKeyID() []byte {
 
 func (i basicIssuer[T]) Type() uint16 {
 	switch inner := any(i.inner).(type) {
-	case type1.BasicPrivateIssuer:
+	case private.BasicPrivateIssuer:
 		return inner.Type()
 	case type2.BasicPublicIssuer:
 		return inner.Type()
@@ -138,8 +135,8 @@ func (i basicIssuer[T]) Type() uint16 {
 
 func UnmarshalArbitratyToken(tokenType uint16, data []byte) (tokens.Token, error) {
 	switch tokenType {
-	case type1.BasicPrivateTokenType:
-		return type1.UnmarshalPrivateToken(data)
+	case private.BasicPrivateTokenType, private.RistrettoPrivateTokenType:
+		return private.UnmarshalPrivateToken(data)
 	case type2.BasicPublicTokenType:
 		return type2.UnmarshalToken(data)
 	default:
@@ -316,11 +313,11 @@ func (etv *BatchedIssuanceTestVector) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-type innerGenerateType1 struct {
+type innerGeneratePrivate struct {
 	challenge tokens.TokenChallenge
 	sk        *oprf.PrivateKey
-	issuer    *type1.BasicPrivateIssuer
-	client    *type1.BasicPrivateClient
+	issuer    *private.BasicPrivateIssuer
+	client    *private.BasicPrivateClient
 }
 
 type innerGenerateType2 struct {
@@ -331,11 +328,11 @@ type innerGenerateType2 struct {
 }
 
 type innerGenerate struct {
-	inner1 *innerGenerateType1
+	inner1 *innerGeneratePrivate
 	inner2 *innerGenerateType2
 }
 
-func newInnerGenerateType1(i *innerGenerateType1) innerGenerate {
+func newInnerGeneratePrivate(i *innerGeneratePrivate) innerGenerate {
 	return innerGenerate{
 		inner1: i,
 		inner2: nil,
@@ -390,7 +387,7 @@ func (i innerGenerate) CreateTokenRequest(challenge []byte, nonce nonceOption) (
 		if err != nil {
 			return nil, err
 		}
-		state := newTokenRequestStateType1(&requestState)
+		state := newTokenRequestStatePrivate(&requestState)
 		return &state, nil
 	}
 	if i.inner2 != nil {
@@ -425,11 +422,11 @@ type type2BasicPublicTokenRequestState struct {
 }
 
 type tokenRequestState struct {
-	state1 *type1.BasicPrivateTokenRequestState
+	state1 *private.BasicPrivateTokenRequestState
 	state2 *type2BasicPublicTokenRequestState
 }
 
-func newTokenRequestStateType1(req *type1.BasicPrivateTokenRequestState) tokenRequestState {
+func newTokenRequestStatePrivate(req *private.BasicPrivateTokenRequestState) tokenRequestState {
 	return tokenRequestState{
 		state1: req,
 		state2: nil,
@@ -525,7 +522,7 @@ func generateNonceOption(tokenType uint16) (*nonceOption, error) {
 	}
 
 	switch tokenType {
-	case type1.BasicPrivateTokenType, type2.BasicPublicTokenType:
+	case private.BasicPrivateTokenType, private.RistrettoPrivateTokenType, type2.BasicPublicTokenType:
 		option := newSingleNonceOption(nonces[0])
 		return &option, nil
 	default:
@@ -665,7 +662,7 @@ func verifyBasicPrivateIssuanceTestVector(t *testing.T, vector BatchedIssuanceTe
 	issuers := make([]Issuer, len(vector.issuance))
 	for i, issuance := range vector.issuance {
 		switch issuance.tokenType {
-		case type1.BasicPrivateTokenType:
+		case private.BasicPrivateTokenType:
 			challengeEnc := issuance.challenge
 			challenge, err := tokens.UnmarshalTokenChallenge(challengeEnc)
 			if err != nil {
@@ -675,20 +672,45 @@ func verifyBasicPrivateIssuanceTestVector(t *testing.T, vector BatchedIssuanceTe
 			if err != nil {
 				t.Fatal(err)
 			}
-			issuer := type1.NewBasicPrivateIssuer(sk)
+			issuer := private.NewBasicPrivateIssuer(sk)
 			issuers[i] = newBasicIssuer(*issuer)
-			client := &type1.BasicPrivateClient{}
+			client := private.NewBasicPrivateClient()
 			requestState, err := client.CreateTokenRequestWithBlind(challengeEnc, issuance.nonce, issuer.TokenKeyID(), issuer.TokenKey(), issuance.blind)
 			if err != nil {
 				t.Error(err)
 			}
-			requestStates[i] = newTokenRequestStateType1(&requestState)
+			requestStates[i] = newTokenRequestStatePrivate(&requestState)
 			requests[i] = requestState.Request()
-			tokenGenerate[i] = newInnerGenerateType1(&innerGenerateType1{
+			tokenGenerate[i] = newInnerGeneratePrivate(&innerGeneratePrivate{
 				challenge,
 				sk,
 				issuer,
-				client,
+				&client,
+			})
+		case private.RistrettoPrivateTokenType:
+			challengeEnc := issuance.challenge
+			challenge, err := tokens.UnmarshalTokenChallenge(challengeEnc)
+			if err != nil {
+				t.Error(err)
+			}
+			sk := util.MustUnmarshalBatchedPrivateOPRFKey(issuance.skS)
+			if err != nil {
+				t.Fatal(err)
+			}
+			issuer := private.NewRistrettoPrivateIssuer(sk)
+			issuers[i] = newBasicIssuer(*issuer)
+			client := private.NewRistrettoPrivateClient()
+			requestState, err := client.CreateTokenRequestWithBlind(challengeEnc, issuance.nonce, issuer.TokenKeyID(), issuer.TokenKey(), issuance.blind)
+			if err != nil {
+				t.Error(err)
+			}
+			requestStates[i] = newTokenRequestStatePrivate(&requestState)
+			requests[i] = requestState.Request()
+			tokenGenerate[i] = newInnerGeneratePrivate(&innerGeneratePrivate{
+				challenge,
+				sk,
+				issuer,
+				&client,
 			})
 		case type2.BasicPublicTokenType:
 			challengeEnc := issuance.challenge
@@ -745,7 +767,7 @@ func verifyBasicPrivateIssuanceTestVector(t *testing.T, vector BatchedIssuanceTe
 		issuance := vector.issuance[i]
 
 		switch issuance.tokenType {
-		case type1.BasicPrivateTokenType, type2.BasicPublicTokenType:
+		case private.BasicPrivateTokenType, private.RistrettoPrivateTokenType, type2.BasicPublicTokenType:
 			if !bytes.Equal(option.token.Marshal(), issuance.token.Marshal()) {
 				t.Fatal("Token mismatch")
 			}
@@ -768,28 +790,28 @@ func verifyBatchedIssuanceTestVectors(t *testing.T, encoded []byte) {
 func TestVectorGenerateBatchedIssuance(t *testing.T) {
 	hash := sha256.New
 	secret := []byte("test vector secret")
-	hkdf := hkdf.New(hash, secret, nil, []byte{0x00, byte(type1.BasicPrivateTokenType & 0xFF)})
+	hkdf := hkdf.New(hash, secret, nil, []byte{0x00, byte(private.BasicPrivateTokenType & 0xFF)})
 
 	redemptionContext := make([]byte, 32)
 	util.MustRead(t, hkdf, redemptionContext)
 
 	challenges := [][]tokens.TokenChallenge{
 		{
-			createTokenChallenge(type1.BasicPrivateTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
+			createTokenChallenge(private.BasicPrivateTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
 		},
 		{
 			createTokenChallenge(type2.BasicPublicTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
 		},
 		{
-			createTokenChallenge(type1.BasicPrivateTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
-			createTokenChallenge(type1.BasicPrivateTokenType, nil, "issuer.example", []string{"origin.example"}),
+			createTokenChallenge(private.BasicPrivateTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
+			createTokenChallenge(private.BasicPrivateTokenType, nil, "issuer.example", []string{"origin.example"}),
 		},
 		{
 			createTokenChallenge(type2.BasicPublicTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
 			createTokenChallenge(type2.BasicPublicTokenType, nil, "issuer.example", []string{"origin.example"}),
 		},
 		{
-			createTokenChallenge(type1.BasicPrivateTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
+			createTokenChallenge(private.BasicPrivateTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
 			createTokenChallenge(type2.BasicPublicTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
 		},
 	}
@@ -803,23 +825,41 @@ func TestVectorGenerateBatchedIssuance(t *testing.T) {
 			challengeEnc := challenge.Marshal()
 
 			switch challenge.TokenType {
-			case type1.BasicPrivateTokenType:
+			case private.BasicPrivateTokenType:
 				var seed [32]byte
 				sk, err := oprf.DeriveKey(oprf.SuiteP384, oprf.VerifiableMode, seed[:], challengeEnc)
 				if err != nil {
 					t.Fatal(err)
 				}
-				issuer := type1.NewBasicPrivateIssuer(sk)
+				issuer := private.NewBasicPrivateIssuer(sk)
 				if issuer == nil {
 					t.Fatal("Error creating type1 issuer")
 				}
 				issuers = append(issuers, newBasicIssuer(*issuer))
-				client := &type1.BasicPrivateClient{}
-				generateArgs[j] = newInnerGenerateType1(&innerGenerateType1{
+				client := private.NewBasicPrivateClient()
+				generateArgs[j] = newInnerGeneratePrivate(&innerGeneratePrivate{
 					challenge,
 					sk,
 					issuer,
-					client,
+					&client,
+				})
+			case private.RistrettoPrivateTokenType:
+				var seed [32]byte
+				sk, err := oprf.DeriveKey(oprf.SuiteRistretto255, oprf.VerifiableMode, seed[:], challengeEnc)
+				if err != nil {
+					t.Fatal(err)
+				}
+				issuer := private.NewRistrettoPrivateIssuer(sk)
+				if issuer == nil {
+					t.Fatal("Error creating type1 issuer")
+				}
+				issuers = append(issuers, newBasicIssuer(*issuer))
+				client := private.NewRistrettoPrivateClient()
+				generateArgs[j] = newInnerGeneratePrivate(&innerGeneratePrivate{
+					challenge,
+					sk,
+					issuer,
+					&client,
 				})
 			case type2.BasicPublicTokenType:
 				sk := loadPrivateKey(t)
