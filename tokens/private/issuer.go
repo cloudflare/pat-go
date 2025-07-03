@@ -9,30 +9,30 @@ import (
 	"github.com/cloudflare/pat-go/tokens"
 )
 
-type BasicPrivateIssuer struct {
+type PrivateIssuer struct {
 	tokenType uint16
 	tokenKey  *oprf.PrivateKey
 }
 
-func NewBasicPrivateIssuer(key *oprf.PrivateKey) *BasicPrivateIssuer {
-	return &BasicPrivateIssuer{
+func NewBasicPrivateIssuer(key *oprf.PrivateKey) *PrivateIssuer {
+	return &PrivateIssuer{
 		tokenType: BasicPrivateTokenType,
 		tokenKey:  key,
 	}
 }
 
-func NewRistrettoPrivateIssuer(key *oprf.PrivateKey) *BasicPrivateIssuer {
-	return &BasicPrivateIssuer{
+func NewRistrettoPrivateIssuer(key *oprf.PrivateKey) *PrivateIssuer {
+	return &PrivateIssuer{
 		tokenType: RistrettoPrivateTokenType,
 		tokenKey:  key,
 	}
 }
 
-func (i *BasicPrivateIssuer) TokenKey() *oprf.PublicKey {
+func (i *PrivateIssuer) TokenKey() *oprf.PublicKey {
 	return i.tokenKey.Public()
 }
 
-func (i *BasicPrivateIssuer) TokenKeyID() []byte {
+func (i *PrivateIssuer) TokenKeyID() []byte {
 	pkIEnc, err := i.tokenKey.Public().MarshalBinary()
 	if err != nil {
 		panic(err)
@@ -41,7 +41,7 @@ func (i *BasicPrivateIssuer) TokenKeyID() []byte {
 	return keyID[:]
 }
 
-func (i BasicPrivateIssuer) Evaluate(req *BasicPrivateTokenRequest) ([]byte, error) {
+func (i PrivateIssuer) Evaluate(req *PrivateTokenRequest) ([]byte, error) {
 	var s oprf.Suite
 	switch i.tokenType {
 	case BasicPrivateTokenType:
@@ -84,11 +84,11 @@ func (i BasicPrivateIssuer) Evaluate(req *BasicPrivateTokenRequest) ([]byte, err
 	return tokenResponse, nil
 }
 
-func (i BasicPrivateIssuer) Type() uint16 {
+func (i PrivateIssuer) Type() uint16 {
 	return i.tokenType
 }
 
-func (i BasicPrivateIssuer) Verify(token tokens.Token) error {
+func (i PrivateIssuer) Verify(token tokens.Token) error {
 	var s oprf.Suite
 	switch i.tokenType {
 	case BasicPrivateTokenType:

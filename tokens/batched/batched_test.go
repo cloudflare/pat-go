@@ -82,11 +82,11 @@ func createTokenChallenge(tokenType uint16, redemptionContext []byte, issuerName
 	return challenge
 }
 
-type basicIssuer[T private.BasicPrivateIssuer | type2.BasicPublicIssuer] struct {
+type basicIssuer[T private.PrivateIssuer | type2.BasicPublicIssuer] struct {
 	inner T
 }
 
-func newBasicIssuer[T private.BasicPrivateIssuer | type2.BasicPublicIssuer](inner T) basicIssuer[T] {
+func newBasicIssuer[T private.PrivateIssuer | type2.BasicPublicIssuer](inner T) basicIssuer[T] {
 	return basicIssuer[T]{
 		inner,
 	}
@@ -94,8 +94,8 @@ func newBasicIssuer[T private.BasicPrivateIssuer | type2.BasicPublicIssuer](inne
 
 func (i basicIssuer[T]) Evaluate(req tokens.TokenRequest) ([]byte, error) {
 	switch inner := any(i.inner).(type) {
-	case private.BasicPrivateIssuer:
-		req, ok := req.(*private.BasicPrivateTokenRequest)
+	case private.PrivateIssuer:
+		req, ok := req.(*private.PrivateTokenRequest)
 		if !ok {
 			return nil, errors.New("TokenRequest does not match issuer type")
 		}
@@ -113,7 +113,7 @@ func (i basicIssuer[T]) Evaluate(req tokens.TokenRequest) ([]byte, error) {
 
 func (i basicIssuer[T]) TokenKeyID() []byte {
 	switch inner := any(i.inner).(type) {
-	case private.BasicPrivateIssuer:
+	case private.PrivateIssuer:
 		return inner.TokenKeyID()
 	case type2.BasicPublicIssuer:
 		return inner.TokenKeyID()
@@ -124,7 +124,7 @@ func (i basicIssuer[T]) TokenKeyID() []byte {
 
 func (i basicIssuer[T]) Type() uint16 {
 	switch inner := any(i.inner).(type) {
-	case private.BasicPrivateIssuer:
+	case private.PrivateIssuer:
 		return inner.Type()
 	case type2.BasicPublicIssuer:
 		return inner.Type()
@@ -316,8 +316,8 @@ func (etv *BatchedIssuanceTestVector) UnmarshalJSON(data []byte) error {
 type innerGeneratePrivate struct {
 	challenge tokens.TokenChallenge
 	sk        *oprf.PrivateKey
-	issuer    *private.BasicPrivateIssuer
-	client    *private.BasicPrivateClient
+	issuer    *private.PrivateIssuer
+	client    *private.PrivateClient
 }
 
 type innerGenerateType2 struct {
@@ -422,11 +422,11 @@ type type2BasicPublicTokenRequestState struct {
 }
 
 type tokenRequestState struct {
-	state1 *private.BasicPrivateTokenRequestState
+	state1 *private.PrivateTokenRequestState
 	state2 *type2BasicPublicTokenRequestState
 }
 
-func newTokenRequestStatePrivate(req *private.BasicPrivateTokenRequestState) tokenRequestState {
+func newTokenRequestStatePrivate(req *private.PrivateTokenRequestState) tokenRequestState {
 	return tokenRequestState{
 		state1: req,
 		state2: nil,

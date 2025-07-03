@@ -51,7 +51,7 @@ func (r *BatchedTokenRequest) Unmarshal(data []byte) bool {
 		token_type := binary.BigEndian.Uint16(data[i : i+2])
 		switch token_type {
 		case private.BasicPrivateTokenType, private.RistrettoPrivateTokenType:
-			token_request = new(private.BasicPrivateTokenRequest)
+			token_request = new(private.PrivateTokenRequest)
 		case type2.BasicPublicTokenType:
 			token_request = new(type2.BasicPublicTokenRequest)
 		default:

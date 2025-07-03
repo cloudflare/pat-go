@@ -35,14 +35,14 @@ func createTokenChallenge(tokenType uint16, redemptionContext []byte, issuerName
 	return challenge
 }
 
-func TestBasicPrivateIssuanceRoundTrip(t *testing.T) {
+func TestPrivateIssuanceRoundTrip(t *testing.T) {
 	tokenKey, err := oprf.GenerateKey(oprf.SuiteP384, rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	issuer := NewBasicPrivateIssuer(tokenKey)
-	client := BasicPrivateClient{}
+	client := PrivateClient{}
 
 	challenge := make([]byte, 32)
 	util.MustRead(t, rand.Reader, challenge)
@@ -76,7 +76,7 @@ func TestBasicPrivateIssuanceRoundTrip(t *testing.T) {
 
 // /////
 // Basic issuance test vector
-type rawBasicPrivateIssuanceTestVector struct {
+type rawPrivateIssuanceTestVector struct {
 	PrivateKey    string `json:"skS"`
 	PublicKey     string `json:"pkS"`
 	Challenge     string `json:"token_challenge"`
@@ -87,7 +87,7 @@ type rawBasicPrivateIssuanceTestVector struct {
 	Token         string `json:"token"`
 }
 
-type BasicPrivateIssuanceTestVector struct {
+type PrivateIssuanceTestVector struct {
 	t             *testing.T
 	skS           *oprf.PrivateKey
 	challenge     []byte
@@ -98,16 +98,16 @@ type BasicPrivateIssuanceTestVector struct {
 	token         []byte
 }
 
-type BasicPrivateIssuanceTestVectorArray struct {
+type PrivateIssuanceTestVectorArray struct {
 	t       *testing.T
-	vectors []BasicPrivateIssuanceTestVector
+	vectors []PrivateIssuanceTestVector
 }
 
-func (tva BasicPrivateIssuanceTestVectorArray) MarshalJSON() ([]byte, error) {
+func (tva PrivateIssuanceTestVectorArray) MarshalJSON() ([]byte, error) {
 	return json.Marshal(tva.vectors)
 }
 
-func (tva *BasicPrivateIssuanceTestVectorArray) UnmarshalJSON(data []byte) error {
+func (tva *PrivateIssuanceTestVectorArray) UnmarshalJSON(data []byte) error {
 	err := json.Unmarshal(data, &tva.vectors)
 	if err != nil {
 		return err
@@ -119,8 +119,8 @@ func (tva *BasicPrivateIssuanceTestVectorArray) UnmarshalJSON(data []byte) error
 	return nil
 }
 
-func (etv BasicPrivateIssuanceTestVector) MarshalJSON() ([]byte, error) {
-	return json.Marshal(rawBasicPrivateIssuanceTestVector{
+func (etv PrivateIssuanceTestVector) MarshalJSON() ([]byte, error) {
+	return json.Marshal(rawPrivateIssuanceTestVector{
 		PrivateKey:    util.MustHex(util.MustMarshalPrivateOPRFKey(etv.skS)),
 		PublicKey:     util.MustHex(util.MustMarshalPublicOPRFKey(etv.skS.Public())),
 		Challenge:     util.MustHex(etv.challenge),
@@ -132,8 +132,8 @@ func (etv BasicPrivateIssuanceTestVector) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func (etv *BasicPrivateIssuanceTestVector) UnmarshalJSON(data []byte) error {
-	raw := rawBasicPrivateIssuanceTestVector{}
+func (etv *PrivateIssuanceTestVector) UnmarshalJSON(data []byte) error {
+	raw := rawPrivateIssuanceTestVector{}
 	err := json.Unmarshal(data, &raw)
 	if err != nil {
 		return err
@@ -158,11 +158,11 @@ func (etv *BasicPrivateIssuanceTestVector) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (etv *BasicPrivateIssuanceTestVector) TokenType() uint16 {
+func (etv *PrivateIssuanceTestVector) TokenType() uint16 {
 	return binary.BigEndian.Uint16(etv.tokenRequest[:2])
 }
 
-func generateBasicPrivateIssuanceBlindingTestVector(t *testing.T, client *BasicPrivateClient, issuer *BasicPrivateIssuer, tokenChallenge tokens.TokenChallenge) BasicPrivateIssuanceTestVector {
+func generatePrivateIssuanceBlindingTestVector(t *testing.T, client *PrivateClient, issuer *PrivateIssuer, tokenChallenge tokens.TokenChallenge) PrivateIssuanceTestVector {
 	challenge := tokenChallenge.Marshal()
 
 	nonce := make([]byte, 32)
@@ -192,7 +192,7 @@ func generateBasicPrivateIssuanceBlindingTestVector(t *testing.T, client *BasicP
 		t.Error(err)
 	}
 
-	return BasicPrivateIssuanceTestVector{
+	return PrivateIssuanceTestVector{
 		t:             t,
 		skS:           issuer.tokenKey,
 		challenge:     challenge,
@@ -204,9 +204,9 @@ func generateBasicPrivateIssuanceBlindingTestVector(t *testing.T, client *BasicP
 	}
 }
 
-func verifyBasicPrivateIssuanceTestVector(t *testing.T, vector BasicPrivateIssuanceTestVector) {
-	var issuer *BasicPrivateIssuer
-	var client BasicPrivateClient
+func verifyPrivateIssuanceTestVector(t *testing.T, vector PrivateIssuanceTestVector) {
+	var issuer *PrivateIssuer
+	var client PrivateClient
 	switch vector.TokenType() {
 	case BasicPrivateTokenType:
 		issuer = NewBasicPrivateIssuer(vector.skS)
@@ -242,15 +242,15 @@ func verifyBasicPrivateIssuanceTestVector(t *testing.T, vector BasicPrivateIssua
 	}
 }
 
-func verifyBasicPrivateIssuanceTestVectors(t *testing.T, encoded []byte) {
-	vectors := BasicPrivateIssuanceTestVectorArray{t: t}
+func verifyPrivateIssuanceTestVectors(t *testing.T, encoded []byte) {
+	vectors := PrivateIssuanceTestVectorArray{t: t}
 	err := json.Unmarshal(encoded, &vectors)
 	if err != nil {
 		t.Fatalf("Error decoding test vector string: %v", err)
 	}
 
 	for _, vector := range vectors.vectors {
-		verifyBasicPrivateIssuanceTestVector(t, vector)
+		verifyPrivateIssuanceTestVector(t, vector)
 	}
 }
 
@@ -270,7 +270,7 @@ func TestVectorGenerateBasicPrivateIssuance(t *testing.T) {
 		createTokenChallenge(BasicPrivateTokenType, redemptionContext, "issuer.example", []string{}),
 	}
 
-	vectors := make([]BasicPrivateIssuanceTestVector, len(challenges))
+	vectors := make([]PrivateIssuanceTestVector, len(challenges))
 	for i := 0; i < len(challenges); i++ {
 		challenge := challenges[i]
 		challengeEnc := challenge.Marshal()
@@ -285,7 +285,7 @@ func TestVectorGenerateBasicPrivateIssuance(t *testing.T) {
 		issuer := NewBasicPrivateIssuer(tokenKey)
 		client := NewBasicPrivateClient()
 
-		vectors[i] = generateBasicPrivateIssuanceBlindingTestVector(t, &client, issuer, challenge)
+		vectors[i] = generatePrivateIssuanceBlindingTestVector(t, &client, issuer, challenge)
 	}
 
 	// Encode the test vectors
@@ -295,7 +295,7 @@ func TestVectorGenerateBasicPrivateIssuance(t *testing.T) {
 	}
 
 	// Verify that we process them correctly
-	verifyBasicPrivateIssuanceTestVectors(t, encoded)
+	verifyPrivateIssuanceTestVectors(t, encoded)
 
 	var outputFile string
 	if outputFile = os.Getenv(outputBasicPrivateIssuanceTestVectorEnvironmentKey); len(outputFile) > 0 {
@@ -322,7 +322,7 @@ func TestVectorGenerateRistrettoPrivateIssuance(t *testing.T) {
 		createTokenChallenge(RistrettoPrivateTokenType, redemptionContext, "issuer.example", []string{}),
 	}
 
-	vectors := make([]BasicPrivateIssuanceTestVector, len(challenges))
+	vectors := make([]PrivateIssuanceTestVector, len(challenges))
 	for i := 0; i < len(challenges); i++ {
 		challenge := challenges[i]
 		challengeEnc := challenge.Marshal()
@@ -337,7 +337,7 @@ func TestVectorGenerateRistrettoPrivateIssuance(t *testing.T) {
 		issuer := NewRistrettoPrivateIssuer(tokenKey)
 		client := NewRistrettoPrivateClient()
 
-		vectors[i] = generateBasicPrivateIssuanceBlindingTestVector(t, &client, issuer, challenge)
+		vectors[i] = generatePrivateIssuanceBlindingTestVector(t, &client, issuer, challenge)
 	}
 
 	// Encode the test vectors
@@ -347,7 +347,7 @@ func TestVectorGenerateRistrettoPrivateIssuance(t *testing.T) {
 	}
 
 	// Verify that we process them correctly
-	verifyBasicPrivateIssuanceTestVectors(t, encoded)
+	verifyPrivateIssuanceTestVectors(t, encoded)
 
 	var outputFile string
 	if outputFile = os.Getenv(outputRistrettoPrivateIssuanceTestVectorEnvironmentKey); len(outputFile) > 0 {
@@ -369,7 +369,7 @@ func TestVectorVerifyBasicPrivateIssuance(t *testing.T) {
 		t.Fatalf("Failed reading test vectors: %v", err)
 	}
 
-	verifyBasicPrivateIssuanceTestVectors(t, encoded)
+	verifyPrivateIssuanceTestVectors(t, encoded)
 }
 
 func TestVectorVerifyRistrettoPrivateIssuance(t *testing.T) {
@@ -383,5 +383,5 @@ func TestVectorVerifyRistrettoPrivateIssuance(t *testing.T) {
 		t.Fatalf("Failed reading test vectors: %v", err)
 	}
 
-	verifyBasicPrivateIssuanceTestVectors(t, encoded)
+	verifyPrivateIssuanceTestVectors(t, encoded)
 }

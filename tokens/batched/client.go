@@ -24,12 +24,12 @@ func (c BatchedClient) CreateTokenRequest(tokenRequests []tokens.TokenRequestWit
 	for _, tokenRequest := range tokenRequests {
 		switch tokenRequest.Type() {
 		case private.BasicPrivateTokenType:
-			casted, ok := tokenRequest.(*private.BasicPrivateTokenRequest)
+			casted, ok := tokenRequest.(*private.PrivateTokenRequest)
 			if !ok || casted.Type() != private.BasicPrivateTokenType {
 				return nil, fmt.Errorf("invalid token request type")
 			}
 		case private.RistrettoPrivateTokenType:
-			casted, ok := tokenRequest.(*private.BasicPrivateTokenRequest)
+			casted, ok := tokenRequest.(*private.PrivateTokenRequest)
 			if !ok || casted.Type() != private.RistrettoPrivateTokenType {
 				return nil, fmt.Errorf("invalid token request type")
 			}

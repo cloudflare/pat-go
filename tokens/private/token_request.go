@@ -9,28 +9,28 @@ import (
 const BasicPrivateTokenType = uint16(0x0001)
 const RistrettoPrivateTokenType = uint16(0x0005)
 
-type BasicPrivateTokenRequest struct {
+type PrivateTokenRequest struct {
 	raw        []byte
 	tokenType  uint16
 	TokenKeyID uint8
 	BlindedReq []byte // 48 bytes
 }
 
-func (r *BasicPrivateTokenRequest) TruncatedTokenKeyID() uint8 {
+func (r *PrivateTokenRequest) TruncatedTokenKeyID() uint8 {
 	return r.TokenKeyID
 }
 
-func (r *BasicPrivateTokenRequest) Type() uint16 {
+func (r *PrivateTokenRequest) Type() uint16 {
 	return r.tokenType
 }
 
-func (r BasicPrivateTokenRequest) Equal(r2 BasicPrivateTokenRequest) bool {
+func (r PrivateTokenRequest) Equal(r2 PrivateTokenRequest) bool {
 	return r.tokenType == r2.tokenType &&
 		r.TokenKeyID == r2.TokenKeyID &&
 		bytes.Equal(r.BlindedReq, r2.BlindedReq)
 }
 
-func (r *BasicPrivateTokenRequest) Marshal() []byte {
+func (r *PrivateTokenRequest) Marshal() []byte {
 	if r.raw != nil {
 		return r.raw
 	}
@@ -44,7 +44,7 @@ func (r *BasicPrivateTokenRequest) Marshal() []byte {
 	return r.raw
 }
 
-func (r *BasicPrivateTokenRequest) Unmarshal(data []byte) bool {
+func (r *PrivateTokenRequest) Unmarshal(data []byte) bool {
 	s := cryptobyte.String(data)
 
 	var tokenType uint16
