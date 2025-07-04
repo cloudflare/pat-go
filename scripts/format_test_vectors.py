@@ -74,13 +74,20 @@ if "type2-issuance" in sys.argv[1]:
     ]
     format_vector(ordered_keys, sys.argv[1])
 
-if "type5-issuance" in sys.argv[1]:
+if "type1-issuance" in sys.argv[1]:
     ordered_keys = [
         "skS", "pkS", "token_challenge", "nonces", "blinds", "salt", "token_request", "token_response", "tokens"
     ]
     format_vector(ordered_keys, sys.argv[1])
+    exit(0)
 
 if "type1-issuance" in sys.argv[1]:
+    ordered_keys = [
+        "skS", "pkS", "token_challenge", "nonce", "blind", "token_request", "token_response", "token"
+    ]
+    format_vector(ordered_keys, sys.argv[1])
+
+if "type5-issuance" in sys.argv[1]:
     ordered_keys = [
         "skS", "pkS", "token_challenge", "nonce", "blind", "token_request", "token_response", "token"
     ]
