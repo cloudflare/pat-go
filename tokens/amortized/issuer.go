@@ -1,4 +1,4 @@
-package type5
+package amortized
 
 import (
 	"bytes"
@@ -9,24 +9,34 @@ import (
 	"github.com/cloudflare/circl/oprf"
 	"github.com/cloudflare/pat-go/quicwire"
 	"github.com/cloudflare/pat-go/tokens"
+	"github.com/cloudflare/pat-go/tokens/private"
 	"golang.org/x/crypto/cryptobyte"
 )
 
-type BatchedPrivateIssuer struct {
-	tokenKey *oprf.PrivateKey
+type AmortizedPrivateIssuer struct {
+	tokenType uint16
+	tokenKey  *oprf.PrivateKey
 }
 
-func NewBatchedPrivateIssuer(key *oprf.PrivateKey) *BatchedPrivateIssuer {
-	return &BatchedPrivateIssuer{
-		tokenKey: key,
+func NewAmortizedBasicPrivateIssuer(key *oprf.PrivateKey) *AmortizedPrivateIssuer {
+	return &AmortizedPrivateIssuer{
+		tokenType: private.BasicPrivateTokenType,
+		tokenKey:  key,
 	}
 }
 
-func (i *BatchedPrivateIssuer) TokenKey() *oprf.PublicKey {
+func NewAmortizedRistrettoPrivateIssuer(key *oprf.PrivateKey) *AmortizedPrivateIssuer {
+	return &AmortizedPrivateIssuer{
+		tokenType: private.RistrettoPrivateTokenType,
+		tokenKey:  key,
+	}
+}
+
+func (i *AmortizedPrivateIssuer) TokenKey() *oprf.PublicKey {
 	return i.tokenKey.Public()
 }
 
-func (i *BatchedPrivateIssuer) TokenKeyID() []byte {
+func (i *AmortizedPrivateIssuer) TokenKeyID() []byte {
 	pkIEnc, err := i.tokenKey.Public().MarshalBinary()
 	if err != nil {
 		panic(err)
@@ -35,14 +45,23 @@ func (i *BatchedPrivateIssuer) TokenKeyID() []byte {
 	return keyID[:]
 }
 
-func (i BatchedPrivateIssuer) Evaluate(req *BatchedPrivateTokenRequest) ([]byte, error) {
-	server := oprf.NewVerifiableServer(oprf.SuiteRistretto255, i.tokenKey)
+func (i AmortizedPrivateIssuer) Evaluate(req *AmortizedPrivateTokenRequest) ([]byte, error) {
+	var s oprf.Suite
+	switch i.tokenType {
+	case private.BasicPrivateTokenType:
+		s = oprf.SuiteP384
+	case private.RistrettoPrivateTokenType:
+		s = oprf.SuiteRistretto255
+	default:
+		return nil, fmt.Errorf("no suite associated to the request token type")
+	}
+	server := oprf.NewVerifiableServer(s, i.tokenKey)
 
-	elementLength := int(oprf.SuiteRistretto255.Group().Params().CompressedElementLength)
+	elementLength := int(s.Group().Params().CompressedElementLength)
 	numRequests := len(req.BlindedReq)
 	elements := make([]group.Element, numRequests)
 	for i := 0; i < numRequests; i++ {
-		elements[i] = group.Ristretto255.NewElement()
+		elements[i] = s.Group().NewElement()
 		err := elements[i].UnmarshalBinary(req.BlindedReq[i])
 		if err != nil {
 			return nil, err
@@ -93,12 +112,21 @@ func (i BatchedPrivateIssuer) Evaluate(req *BatchedPrivateTokenRequest) ([]byte,
 	return b.BytesOrPanic(), nil
 }
 
-func (i BatchedPrivateIssuer) Type() uint16 {
-	return BatchedPrivateTokenType
+func (i AmortizedPrivateIssuer) Type() uint16 {
+	return i.tokenType
 }
 
-func (i BatchedPrivateIssuer) Verify(token tokens.Token) error {
-	server := oprf.NewVerifiableServer(oprf.SuiteRistretto255, i.tokenKey)
+func (i AmortizedPrivateIssuer) Verify(token tokens.Token) error {
+	var s oprf.Suite
+	switch i.tokenType {
+	case private.BasicPrivateTokenType:
+		s = oprf.SuiteP384
+	case private.RistrettoPrivateTokenType:
+		s = oprf.SuiteRistretto255
+	default:
+		return fmt.Errorf("no suite associated to the request token type")
+	}
+	server := oprf.NewVerifiableServer(s, i.tokenKey)
 
 	tokenInput := token.AuthenticatorInput()
 	output, err := server.FullEvaluate(tokenInput)

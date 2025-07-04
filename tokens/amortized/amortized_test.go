@@ -1,10 +1,12 @@
-package type5
+package amortized
 
 import (
 	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 
@@ -12,12 +14,15 @@ import (
 	"golang.org/x/crypto/hkdf"
 
 	"github.com/cloudflare/pat-go/tokens"
+	"github.com/cloudflare/pat-go/tokens/private"
 	"github.com/cloudflare/pat-go/util"
 )
 
 const (
-	outputBatchedPrivateIssuanceTestVectorEnvironmentKey = "TYPE5_ISSUANCE_TEST_VECTORS_OUT"
-	inputBatchedPrivateIssuanceTestVectorEnvironmentKey  = "TYPE5_ISSUANCE_TEST_VECTORS_IN"
+	outputAmortizedBasicPrivateIssuanceTestVectorEnvironmentKey     = "AMORTIZED_TYPE1_ISSUANCE_TEST_VECTORS_OUT"
+	inputAmortizedBasicPrivateIssuanceTestVectorEnvironmentKey      = "AMORTIZED_TYPE1_ISSUANCE_TEST_VECTORS_IN"
+	outputAmortizedRistrettoPrivateIssuanceTestVectorEnvironmentKey = "AMORTIZED_TYPE5_ISSUANCE_TEST_VECTORS_OUT"
+	inputAmortizedRistrettoPrivateIssuanceTestVectorEnvironmentKey  = "AMORTIZED_TYPE5_ISSUANCE_TEST_VECTORS_IN"
 )
 
 func createTokenChallenge(tokenType uint16, redemptionContext []byte, issuerName string, originInfo []string) tokens.TokenChallenge {
@@ -31,14 +36,14 @@ func createTokenChallenge(tokenType uint16, redemptionContext []byte, issuerName
 	return challenge
 }
 
-func TestBatchedPrivateIssuanceRoundTrip(t *testing.T) {
+func TestAmortizedPrivateIssuanceRoundTrip(t *testing.T) {
 	tokenKey, err := oprf.GenerateKey(oprf.SuiteRistretto255, rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	issuer := NewBatchedPrivateIssuer(tokenKey)
-	client := BatchedPrivateClient{}
+	issuer := NewAmortizedRistrettoPrivateIssuer(tokenKey)
+	client := NewAmortizedRistrettoPrivateClient()
 
 	challenge := make([]byte, 32)
 	util.MustRead(t, rand.Reader, challenge)
@@ -77,7 +82,7 @@ func TestBatchedPrivateIssuanceRoundTrip(t *testing.T) {
 
 // /////
 // Batched issuance test vector
-type rawBatchedPrivateIssuanceTestVector struct {
+type rawAmortizedPrivateIssuanceTestVector struct {
 	PrivateKey    string   `json:"skS"`
 	PublicKey     string   `json:"pkS"`
 	Challenge     string   `json:"token_challenge"`
@@ -88,7 +93,7 @@ type rawBatchedPrivateIssuanceTestVector struct {
 	Tokens        []string `json:"tokens"`
 }
 
-type BatchedPrivateIssuanceTestVector struct {
+type AmortizedPrivateIssuanceTestVector struct {
 	t             *testing.T
 	skS           *oprf.PrivateKey
 	challenge     []byte
@@ -99,16 +104,16 @@ type BatchedPrivateIssuanceTestVector struct {
 	tokens        []tokens.Token
 }
 
-type BatchedPrivateIssuanceTestVectorArray struct {
+type AmortizedPrivateIssuanceTestVectorArray struct {
 	t       *testing.T
-	vectors []BatchedPrivateIssuanceTestVector
+	vectors []AmortizedPrivateIssuanceTestVector
 }
 
-func (tva BatchedPrivateIssuanceTestVectorArray) MarshalJSON() ([]byte, error) {
+func (tva AmortizedPrivateIssuanceTestVectorArray) MarshalJSON() ([]byte, error) {
 	return json.Marshal(tva.vectors)
 }
 
-func (tva *BatchedPrivateIssuanceTestVectorArray) UnmarshalJSON(data []byte) error {
+func (tva *AmortizedPrivateIssuanceTestVectorArray) UnmarshalJSON(data []byte) error {
 	err := json.Unmarshal(data, &tva.vectors)
 	if err != nil {
 		return err
@@ -120,13 +125,13 @@ func (tva *BatchedPrivateIssuanceTestVectorArray) UnmarshalJSON(data []byte) err
 	return nil
 }
 
-func (etv BatchedPrivateIssuanceTestVector) MarshalJSON() ([]byte, error) {
+func (etv AmortizedPrivateIssuanceTestVector) MarshalJSON() ([]byte, error) {
 	tokens := make([][]byte, len(etv.tokens))
 	for i := 0; i < len(tokens); i++ {
 		tokens[i] = etv.tokens[i].Marshal()
 	}
 
-	return json.Marshal(rawBatchedPrivateIssuanceTestVector{
+	return json.Marshal(rawAmortizedPrivateIssuanceTestVector{
 		PrivateKey:    util.MustHex(util.MustMarshalPrivateOPRFKey(etv.skS)),
 		PublicKey:     util.MustHex(util.MustMarshalPublicOPRFKey(etv.skS.Public())),
 		Challenge:     util.MustHex(etv.challenge),
@@ -147,14 +152,13 @@ func mustUnmarshalBatchedPrivateOPRFKey(data []byte) *oprf.PrivateKey {
 	return key
 }
 
-func (etv *BatchedPrivateIssuanceTestVector) UnmarshalJSON(data []byte) error {
-	raw := rawBatchedPrivateIssuanceTestVector{}
+func (etv *AmortizedPrivateIssuanceTestVector) UnmarshalJSON(data []byte) error {
+	raw := rawAmortizedPrivateIssuanceTestVector{}
 	err := json.Unmarshal(data, &raw)
 	if err != nil {
 		return err
 	}
 
-	etv.skS = mustUnmarshalBatchedPrivateOPRFKey(util.MustUnhex(nil, raw.PrivateKey))
 	etv.challenge = util.MustUnhex(nil, raw.Challenge)
 	etv.tokenRequest = util.MustUnhex(nil, raw.TokenRequest)
 	etv.tokenResponse = util.MustUnhex(nil, raw.TokenResponse)
@@ -171,17 +175,31 @@ func (etv *BatchedPrivateIssuanceTestVector) UnmarshalJSON(data []byte) error {
 
 	etv.tokens = make([]tokens.Token, len(raw.Tokens))
 	for i := 0; i < len(raw.Tokens); i++ {
-		token, err := UnmarshalBatchedPrivateToken(util.MustUnhex(nil, raw.Tokens[i]))
+		token, err := private.UnmarshalPrivateToken(util.MustUnhex(nil, raw.Tokens[i]))
 		if err != nil {
 			return err
 		}
 		etv.tokens[i] = token
 	}
 
+	skS := util.MustUnhex(nil, raw.PrivateKey)
+	switch etv.tokens[0].TokenType {
+	case private.BasicPrivateTokenType:
+		etv.skS = util.MustUnmarshalPrivateOPRFKey(skS)
+	case private.RistrettoPrivateTokenType:
+		etv.skS = mustUnmarshalBatchedPrivateOPRFKey(skS)
+	default:
+		return fmt.Errorf("invalid private key format")
+	}
+
 	return nil
 }
 
-func generateBatchedPrivateIssuanceBlindingTestVector(t *testing.T, client *BatchedPrivateClient, issuer *BatchedPrivateIssuer, tokenChallenge tokens.TokenChallenge) BatchedPrivateIssuanceTestVector {
+func (etv *AmortizedPrivateIssuanceTestVector) TokenType() uint16 {
+	return binary.BigEndian.Uint16(etv.tokenRequest[:2])
+}
+
+func generateAmortizedPrivateIssuanceBlindingTestVector(t *testing.T, client *AmortizedPrivateClient, issuer *AmortizedPrivateIssuer, tokenChallenge tokens.TokenChallenge) AmortizedPrivateIssuanceTestVector {
 	challenge := tokenChallenge.Marshal()
 
 	nonces := make([][]byte, 3)
@@ -224,7 +242,7 @@ func generateBatchedPrivateIssuanceBlindingTestVector(t *testing.T, client *Batc
 		}
 	}
 
-	return BatchedPrivateIssuanceTestVector{
+	return AmortizedPrivateIssuanceTestVector{
 		t:             t,
 		skS:           issuer.tokenKey,
 		challenge:     challenge,
@@ -236,9 +254,19 @@ func generateBatchedPrivateIssuanceBlindingTestVector(t *testing.T, client *Batc
 	}
 }
 
-func verifyBatchedPrivateIssuanceTestVector(t *testing.T, vector BatchedPrivateIssuanceTestVector) {
-	issuer := NewBatchedPrivateIssuer(vector.skS)
-	client := BatchedPrivateClient{}
+func verifyAmortizedPrivateIssuanceTestVector(t *testing.T, vector AmortizedPrivateIssuanceTestVector) {
+	var issuer *AmortizedPrivateIssuer
+	var client AmortizedPrivateClient
+	switch vector.TokenType() {
+	case private.BasicPrivateTokenType:
+		issuer = NewAmortizedBasicPrivateIssuer(vector.skS)
+		client = NewAmortizedBasicPrivateClient()
+	case private.RistrettoPrivateTokenType:
+		issuer = NewAmortizedRistrettoPrivateIssuer(vector.skS)
+		client = NewAmortizedRistrettoPrivateClient()
+	default:
+		t.Error(fmt.Errorf("invalid token type"))
+	}
 
 	tokenKeyID := issuer.TokenKeyID()
 	tokenPublicKey := issuer.TokenKey()
@@ -265,35 +293,87 @@ func verifyBatchedPrivateIssuanceTestVector(t *testing.T, vector BatchedPrivateI
 	}
 }
 
-func verifyBatchedPrivateIssuanceTestVectors(t *testing.T, encoded []byte) {
-	vectors := BatchedPrivateIssuanceTestVectorArray{t: t}
+func verifyAmortizedPrivateIssuanceTestVectors(t *testing.T, encoded []byte) {
+	vectors := AmortizedPrivateIssuanceTestVectorArray{t: t}
 	err := json.Unmarshal(encoded, &vectors)
 	if err != nil {
 		t.Fatalf("Error decoding test vector string: %v", err)
 	}
 
 	for _, vector := range vectors.vectors {
-		verifyBatchedPrivateIssuanceTestVector(t, vector)
+		verifyAmortizedPrivateIssuanceTestVector(t, vector)
 	}
 }
 
-func TestVectorGenerateBatchedPrivateIssuance(t *testing.T) {
+func TestVectorGenerateAmortizedBasicPrivateIssuance(t *testing.T) {
 	hash := sha256.New
 	secret := []byte("test vector secret")
-	hkdf := hkdf.New(hash, secret, nil, []byte{0x00, byte(BatchedPrivateTokenType & 0xFF)})
+	hkdf := hkdf.New(hash, secret, nil, []byte{0x00, byte(private.BasicPrivateTokenType & 0xFF)})
 
 	redemptionContext := make([]byte, 32)
 	util.MustRead(t, hkdf, redemptionContext)
 
 	challenges := []tokens.TokenChallenge{
-		createTokenChallenge(BatchedPrivateTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
-		createTokenChallenge(BatchedPrivateTokenType, nil, "issuer.example", []string{"origin.example"}),
-		createTokenChallenge(BatchedPrivateTokenType, nil, "issuer.example", []string{"foo.example,bar.example"}),
-		createTokenChallenge(BatchedPrivateTokenType, nil, "issuer.example", []string{}),
-		createTokenChallenge(BatchedPrivateTokenType, redemptionContext, "issuer.example", []string{}),
+		createTokenChallenge(private.BasicPrivateTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
+		createTokenChallenge(private.BasicPrivateTokenType, nil, "issuer.example", []string{"origin.example"}),
+		createTokenChallenge(private.BasicPrivateTokenType, nil, "issuer.example", []string{"foo.example,bar.example"}),
+		createTokenChallenge(private.BasicPrivateTokenType, nil, "issuer.example", []string{}),
+		createTokenChallenge(private.BasicPrivateTokenType, redemptionContext, "issuer.example", []string{}),
 	}
 
-	vectors := make([]BatchedPrivateIssuanceTestVector, len(challenges))
+	vectors := make([]AmortizedPrivateIssuanceTestVector, len(challenges))
+	for i := 0; i < len(challenges); i++ {
+		challenge := challenges[i]
+		challengeEnc := challenge.Marshal()
+
+		var seed [32]byte
+		util.MustRead(t, rand.Reader, seed[:])
+		tokenKey, err := oprf.DeriveKey(oprf.SuiteP384, oprf.VerifiableMode, seed[:], challengeEnc)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		issuer := NewAmortizedBasicPrivateIssuer(tokenKey)
+		client := NewAmortizedBasicPrivateClient()
+
+		vectors[i] = generateAmortizedPrivateIssuanceBlindingTestVector(t, &client, issuer, challenge)
+	}
+
+	// Encode the test vectors
+	encoded, err := json.Marshal(vectors)
+	if err != nil {
+		t.Fatalf("Error producing test vectors: %v", err)
+	}
+
+	// Verify that we process them correctly
+	verifyAmortizedPrivateIssuanceTestVectors(t, encoded)
+
+	var outputFile string
+	if outputFile = os.Getenv(outputAmortizedBasicPrivateIssuanceTestVectorEnvironmentKey); len(outputFile) > 0 {
+		err := os.WriteFile(outputFile, encoded, 0644)
+		if err != nil {
+			t.Fatalf("Error writing test vectors: %v", err)
+		}
+	}
+}
+
+func TestVectorGenerateAmortizedRistrettoPrivateIssuance(t *testing.T) {
+	hash := sha256.New
+	secret := []byte("test vector secret")
+	hkdf := hkdf.New(hash, secret, nil, []byte{0x00, byte(private.RistrettoPrivateTokenType & 0xFF)})
+
+	redemptionContext := make([]byte, 32)
+	util.MustRead(t, hkdf, redemptionContext)
+
+	challenges := []tokens.TokenChallenge{
+		createTokenChallenge(private.RistrettoPrivateTokenType, redemptionContext, "issuer.example", []string{"origin.example"}),
+		createTokenChallenge(private.RistrettoPrivateTokenType, nil, "issuer.example", []string{"origin.example"}),
+		createTokenChallenge(private.RistrettoPrivateTokenType, nil, "issuer.example", []string{"foo.example,bar.example"}),
+		createTokenChallenge(private.RistrettoPrivateTokenType, nil, "issuer.example", []string{}),
+		createTokenChallenge(private.RistrettoPrivateTokenType, redemptionContext, "issuer.example", []string{}),
+	}
+
+	vectors := make([]AmortizedPrivateIssuanceTestVector, len(challenges))
 	for i := 0; i < len(challenges); i++ {
 		challenge := challenges[i]
 		challengeEnc := challenge.Marshal()
@@ -305,10 +385,10 @@ func TestVectorGenerateBatchedPrivateIssuance(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		issuer := NewBatchedPrivateIssuer(tokenKey)
-		client := &BatchedPrivateClient{}
+		issuer := NewAmortizedRistrettoPrivateIssuer(tokenKey)
+		client := NewAmortizedRistrettoPrivateClient()
 
-		vectors[i] = generateBatchedPrivateIssuanceBlindingTestVector(t, client, issuer, challenge)
+		vectors[i] = generateAmortizedPrivateIssuanceBlindingTestVector(t, &client, issuer, challenge)
 	}
 
 	// Encode the test vectors
@@ -318,10 +398,10 @@ func TestVectorGenerateBatchedPrivateIssuance(t *testing.T) {
 	}
 
 	// Verify that we process them correctly
-	verifyBatchedPrivateIssuanceTestVectors(t, encoded)
+	verifyAmortizedPrivateIssuanceTestVectors(t, encoded)
 
 	var outputFile string
-	if outputFile = os.Getenv(outputBatchedPrivateIssuanceTestVectorEnvironmentKey); len(outputFile) > 0 {
+	if outputFile = os.Getenv(outputAmortizedRistrettoPrivateIssuanceTestVectorEnvironmentKey); len(outputFile) > 0 {
 		err := os.WriteFile(outputFile, encoded, 0644)
 		if err != nil {
 			t.Fatalf("Error writing test vectors: %v", err)
@@ -329,9 +409,9 @@ func TestVectorGenerateBatchedPrivateIssuance(t *testing.T) {
 	}
 }
 
-func TestVectorVerifyBatchedPrivateIssuance(t *testing.T) {
+func TestVectorVerifyAmortizedBasicPrivateIssuance(t *testing.T) {
 	var inputFile string
-	if inputFile = os.Getenv(inputBatchedPrivateIssuanceTestVectorEnvironmentKey); len(inputFile) == 0 {
+	if inputFile = os.Getenv(inputAmortizedBasicPrivateIssuanceTestVectorEnvironmentKey); len(inputFile) == 0 {
 		t.Skip("Test vectors were not provided")
 	}
 
@@ -340,5 +420,19 @@ func TestVectorVerifyBatchedPrivateIssuance(t *testing.T) {
 		t.Fatalf("Failed reading test vectors: %v", err)
 	}
 
-	verifyBatchedPrivateIssuanceTestVectors(t, encoded)
+	verifyAmortizedPrivateIssuanceTestVectors(t, encoded)
+}
+
+func TestVectorVerifyAmortizedRistrettoPrivateIssuance(t *testing.T) {
+	var inputFile string
+	if inputFile = os.Getenv(inputAmortizedRistrettoPrivateIssuanceTestVectorEnvironmentKey); len(inputFile) == 0 {
+		t.Skip("Test vectors were not provided")
+	}
+
+	encoded, err := os.ReadFile(inputFile)
+	if err != nil {
+		t.Fatalf("Failed reading test vectors: %v", err)
+	}
+
+	verifyAmortizedPrivateIssuanceTestVectors(t, encoded)
 }

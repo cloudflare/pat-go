@@ -1,4 +1,4 @@
-package type5
+package amortized
 
 import (
 	"crypto/sha256"
@@ -9,33 +9,43 @@ import (
 	"github.com/cloudflare/circl/zk/dleq"
 	"github.com/cloudflare/pat-go/quicwire"
 	"github.com/cloudflare/pat-go/tokens"
+	"github.com/cloudflare/pat-go/tokens/private"
 	"golang.org/x/crypto/cryptobyte"
 )
 
-type BatchedPrivateClient struct {
+type AmortizedPrivateClient struct {
+	tokenType uint16
 }
 
-func NewBatchedPrivateClient() BatchedPrivateClient {
-	return BatchedPrivateClient{}
+func NewAmortizedBasicPrivateClient() AmortizedPrivateClient {
+	return AmortizedPrivateClient{
+		tokenType: private.BasicPrivateTokenType,
+	}
 }
 
-type BatchedPrivateTokenRequestState struct {
+func NewAmortizedRistrettoPrivateClient() AmortizedPrivateClient {
+	return AmortizedPrivateClient{
+		tokenType: private.RistrettoPrivateTokenType,
+	}
+}
+
+type AmortizedPrivateTokenRequestState struct {
 	tokenInputs     [][]byte
-	request         *BatchedPrivateTokenRequest
+	request         *AmortizedPrivateTokenRequest
 	client          oprf.VerifiableClient
 	verificationKey *oprf.PublicKey
 	verifier        *oprf.FinalizeData
 }
 
-func (s BatchedPrivateTokenRequestState) Request() *BatchedPrivateTokenRequest {
+func (s AmortizedPrivateTokenRequestState) Request() *AmortizedPrivateTokenRequest {
 	return s.request
 }
 
-func (s BatchedPrivateTokenRequestState) ForTestsOnlyVerifier() *oprf.FinalizeData {
+func (s AmortizedPrivateTokenRequestState) ForTestsOnlyVerifier() *oprf.FinalizeData {
 	return s.verifier
 }
 
-func (s BatchedPrivateTokenRequestState) FinalizeTokens(tokenResponseEnc []byte) ([]tokens.Token, error) {
+func (s AmortizedPrivateTokenRequestState) FinalizeTokens(tokenResponseEnc []byte) ([]tokens.Token, error) {
 	reader := cryptobyte.String(tokenResponseEnc)
 
 	l, offset := quicwire.ConsumeVarint(tokenResponseEnc)
@@ -46,7 +56,17 @@ func (s BatchedPrivateTokenRequestState) FinalizeTokens(tokenResponseEnc []byte)
 		return nil, fmt.Errorf("invalid batch token response list encoding")
 	}
 
-	elementLength := int(group.Ristretto255.Params().CompressedElementLength)
+	var g group.Group
+	switch s.request.Type() {
+	case private.BasicPrivateTokenType:
+		g = group.P384
+	case private.RistrettoPrivateTokenType:
+		g = group.Ristretto255
+	default:
+		return nil, fmt.Errorf("no group associated to the request token type")
+	}
+
+	elementLength := int(g.Params().CompressedElementLength)
 	if len(encodedElements)%elementLength != 0 {
 		return nil, fmt.Errorf("invalid batch token response encoding")
 	}
@@ -56,7 +76,7 @@ func (s BatchedPrivateTokenRequestState) FinalizeTokens(tokenResponseEnc []byte)
 	}
 	elements := make([]group.Element, numElements)
 	for i := 0; i < numElements; i++ {
-		elements[i] = group.Ristretto255.NewElement()
+		elements[i] = g.NewElement()
 		err := elements[i].UnmarshalBinary(encodedElements[i*elementLength : (i+1)*elementLength])
 		if err != nil {
 			return nil, err
@@ -64,14 +84,14 @@ func (s BatchedPrivateTokenRequestState) FinalizeTokens(tokenResponseEnc []byte)
 	}
 
 	// XXX(caw): should we have a ProofLength parameter on the OPRF interface?
-	proofLength := int(2 * group.Ristretto255.Params().ScalarLength)
+	proofLength := int(2 * g.Params().ScalarLength)
 	proofEnc := make([]byte, proofLength)
 	if !reader.ReadBytes(&proofEnc, proofLength) {
 		return nil, fmt.Errorf("invalid batch token response proof encoding")
 	}
 
 	proof := new(dleq.Proof)
-	err := proof.UnmarshalBinary(group.Ristretto255, proofEnc)
+	err := proof.UnmarshalBinary(g, proofEnc)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +108,7 @@ func (s BatchedPrivateTokenRequestState) FinalizeTokens(tokenResponseEnc []byte)
 	tokens := make([]tokens.Token, numElements)
 	for i := 0; i < numElements; i++ {
 		tokenData := append(s.tokenInputs[i], outputs[i]...)
-		tokens[i], err = UnmarshalBatchedPrivateToken(tokenData)
+		tokens[i], err = private.UnmarshalPrivateToken(tokenData)
 		if err != nil {
 			return nil, err
 		}
@@ -98,15 +118,24 @@ func (s BatchedPrivateTokenRequestState) FinalizeTokens(tokenResponseEnc []byte)
 }
 
 // https://datatracker.ietf.org/doc/html/draft-robert-privacypass-batched-tokens-00#name-client-to-issuer-request
-func (c BatchedPrivateClient) CreateTokenRequest(challenge []byte, nonce [][]byte, tokenKeyID []byte, verificationKey *oprf.PublicKey) (BatchedPrivateTokenRequestState, error) {
-	client := oprf.NewVerifiableClient(oprf.SuiteRistretto255, verificationKey)
+func (c AmortizedPrivateClient) CreateTokenRequest(challenge []byte, nonce [][]byte, tokenKeyID []byte, verificationKey *oprf.PublicKey) (AmortizedPrivateTokenRequestState, error) {
+	var s oprf.Suite
+	switch c.tokenType {
+	case private.BasicPrivateTokenType:
+		s = oprf.SuiteP384
+	case private.RistrettoPrivateTokenType:
+		s = oprf.SuiteRistretto255
+	default:
+		return AmortizedPrivateTokenRequestState{}, fmt.Errorf("no suite associated to the request token type")
+	}
+	client := oprf.NewVerifiableClient(s, verificationKey)
 
 	numTokens := len(nonce)
 	tokenInputs := make([][]byte, numTokens)
 	for i := 0; i < numTokens; i++ {
 		context := sha256.Sum256(challenge)
 		token := tokens.Token{
-			TokenType:     BatchedPrivateTokenType,
+			TokenType:     c.tokenType,
 			Nonce:         nonce[i],
 			Context:       context[:],
 			KeyID:         tokenKeyID,
@@ -119,25 +148,26 @@ func (c BatchedPrivateClient) CreateTokenRequest(challenge []byte, nonce [][]byt
 
 	finalizeData, evalRequest, err := client.Blind(tokenInputs)
 	if err != nil {
-		return BatchedPrivateTokenRequestState{}, err
+		return AmortizedPrivateTokenRequestState{}, err
 	}
 
 	encodedElements := make([][]byte, numTokens)
 	for i := 0; i < numTokens; i++ {
 		encRequest, err := evalRequest.Elements[i].MarshalBinaryCompress()
 		if err != nil {
-			return BatchedPrivateTokenRequestState{}, err
+			return AmortizedPrivateTokenRequestState{}, err
 		}
 		encodedElements[i] = make([]byte, len(encRequest))
 		copy(encodedElements[i], encRequest)
 	}
 
-	request := &BatchedPrivateTokenRequest{
+	request := &AmortizedPrivateTokenRequest{
+		tokenType:  c.tokenType,
 		TokenKeyID: tokenKeyID[len(tokenKeyID)-1],
 		BlindedReq: encodedElements,
 	}
 
-	requestState := BatchedPrivateTokenRequestState{
+	requestState := AmortizedPrivateTokenRequestState{
 		tokenInputs:     tokenInputs,
 		request:         request,
 		client:          client,
@@ -148,8 +178,17 @@ func (c BatchedPrivateClient) CreateTokenRequest(challenge []byte, nonce [][]byt
 	return requestState, nil
 }
 
-func (c BatchedPrivateClient) CreateTokenRequestWithBlinds(challenge []byte, nonces [][]byte, tokenKeyID []byte, verificationKey *oprf.PublicKey, encodedBlinds [][]byte) (BatchedPrivateTokenRequestState, error) {
-	client := oprf.NewVerifiableClient(oprf.SuiteRistretto255, verificationKey)
+func (c AmortizedPrivateClient) CreateTokenRequestWithBlinds(challenge []byte, nonces [][]byte, tokenKeyID []byte, verificationKey *oprf.PublicKey, encodedBlinds [][]byte) (AmortizedPrivateTokenRequestState, error) {
+	var s oprf.Suite
+	switch c.tokenType {
+	case private.BasicPrivateTokenType:
+		s = oprf.SuiteP384
+	case private.RistrettoPrivateTokenType:
+		s = oprf.SuiteRistretto255
+	default:
+		return AmortizedPrivateTokenRequestState{}, fmt.Errorf("no suite associated to the request token type")
+	}
+	client := oprf.NewVerifiableClient(s, verificationKey)
 
 	numTokens := len(nonces)
 	tokenInputs := make([][]byte, numTokens)
@@ -157,7 +196,7 @@ func (c BatchedPrivateClient) CreateTokenRequestWithBlinds(challenge []byte, non
 	for i := 0; i < numTokens; i++ {
 		context := sha256.Sum256(challenge)
 		token := tokens.Token{
-			TokenType:     BatchedPrivateTokenType,
+			TokenType:     c.tokenType,
 			Nonce:         nonces[i],
 			Context:       context[:],
 			KeyID:         tokenKeyID,
@@ -167,34 +206,35 @@ func (c BatchedPrivateClient) CreateTokenRequestWithBlinds(challenge []byte, non
 		tokenInputs[i] = make([]byte, len(tokenInput))
 		copy(tokenInputs[i], tokenInput)
 
-		blinds[i] = group.Ristretto255.NewScalar()
+		blinds[i] = s.Group().NewScalar()
 		err := blinds[i].UnmarshalBinary(encodedBlinds[i])
 		if err != nil {
-			return BatchedPrivateTokenRequestState{}, err
+			return AmortizedPrivateTokenRequestState{}, err
 		}
 	}
 
 	finalizeData, evalRequest, err := client.DeterministicBlind(tokenInputs, blinds)
 	if err != nil {
-		return BatchedPrivateTokenRequestState{}, err
+		return AmortizedPrivateTokenRequestState{}, err
 	}
 
 	encodedElements := make([][]byte, numTokens)
 	for i := 0; i < numTokens; i++ {
 		encRequest, err := evalRequest.Elements[i].MarshalBinaryCompress()
 		if err != nil {
-			return BatchedPrivateTokenRequestState{}, err
+			return AmortizedPrivateTokenRequestState{}, err
 		}
 		encodedElements[i] = make([]byte, len(encRequest))
 		copy(encodedElements[i], encRequest)
 	}
 
-	request := &BatchedPrivateTokenRequest{
+	request := &AmortizedPrivateTokenRequest{
+		tokenType:  c.tokenType,
 		TokenKeyID: tokenKeyID[len(tokenKeyID)-1],
 		BlindedReq: encodedElements,
 	}
 
-	requestState := BatchedPrivateTokenRequestState{
+	requestState := AmortizedPrivateTokenRequestState{
 		tokenInputs:     tokenInputs,
 		request:         request,
 		client:          client,

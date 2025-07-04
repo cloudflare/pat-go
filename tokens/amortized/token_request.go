@@ -1,29 +1,29 @@
-package type5
+package amortized
 
 import (
 	"bytes"
 
 	"github.com/cloudflare/pat-go/quicwire"
+	"github.com/cloudflare/pat-go/tokens/private"
 	"golang.org/x/crypto/cryptobyte"
 )
 
-const BatchedPrivateTokenType = uint16(0x0005)
-
-type BatchedPrivateTokenRequest struct {
+type AmortizedPrivateTokenRequest struct {
 	raw        []byte
+	tokenType  uint16
 	TokenKeyID uint8
 	BlindedReq [][]byte
 }
 
-func (r *BatchedPrivateTokenRequest) TruncatedTokenKeyID() uint8 {
+func (r *AmortizedPrivateTokenRequest) TruncatedTokenKeyID() uint8 {
 	return r.TokenKeyID
 }
 
-func (r *BatchedPrivateTokenRequest) Type() uint16 {
-	return BatchedPrivateTokenType
+func (r *AmortizedPrivateTokenRequest) Type() uint16 {
+	return r.tokenType
 }
 
-func (r BatchedPrivateTokenRequest) Equal(r2 BatchedPrivateTokenRequest) bool {
+func (r AmortizedPrivateTokenRequest) Equal(r2 AmortizedPrivateTokenRequest) bool {
 	if r.TokenKeyID == r2.TokenKeyID && len(r.BlindedReq) == len(r2.BlindedReq) {
 		equal := true
 		for i := 0; i < len(r.BlindedReq); i++ {
@@ -37,13 +37,13 @@ func (r BatchedPrivateTokenRequest) Equal(r2 BatchedPrivateTokenRequest) bool {
 	return false
 }
 
-func (r *BatchedPrivateTokenRequest) Marshal() []byte {
+func (r *AmortizedPrivateTokenRequest) Marshal() []byte {
 	if r.raw != nil {
 		return r.raw
 	}
 
 	b := cryptobyte.NewBuilder(nil)
-	b.AddUint16(BatchedPrivateTokenType)
+	b.AddUint16(r.tokenType)
 	b.AddUint8(r.TokenKeyID)
 
 	bElmts := cryptobyte.NewBuilder(nil)
@@ -61,12 +61,12 @@ func (r *BatchedPrivateTokenRequest) Marshal() []byte {
 	return r.raw
 }
 
-func (r *BatchedPrivateTokenRequest) Unmarshal(data []byte) bool {
+func (r *AmortizedPrivateTokenRequest) Unmarshal(data []byte) bool {
 	s := cryptobyte.String(data)
 
 	var tokenType uint16
 	if !s.ReadUint16(&tokenType) ||
-		tokenType != BatchedPrivateTokenType ||
+		(tokenType != private.BasicPrivateTokenType && tokenType != private.RistrettoPrivateTokenType) ||
 		!s.ReadUint8(&r.TokenKeyID) {
 		return false
 	}
