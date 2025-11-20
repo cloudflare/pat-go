@@ -42,7 +42,7 @@ func TestPrivateIssuanceRoundTrip(t *testing.T) {
 	}
 
 	issuer := NewBasicPrivateIssuer(tokenKey)
-	client := PrivateClient{}
+	client := NewBasicPrivateClient()
 
 	challenge := make([]byte, 32)
 	util.MustRead(t, rand.Reader, challenge)
