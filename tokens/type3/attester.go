@@ -90,7 +90,7 @@ func (a *RateLimitedAttester) innerVerifyRequest(tokenRequest RateLimitedTokenRe
 func (a *RateLimitedAttester) VerifyRequest(tokenRequest RateLimitedTokenRequest, blindKeyEnc, clientKeyEnc, anonymousOrigin []byte) error {
 	err := a.innerVerifyRequest(tokenRequest)
 	if err != nil {
-		return nil
+		return err
 	}
 
 	curve := elliptic.P384()
@@ -101,7 +101,7 @@ func (a *RateLimitedAttester) VerifyRequest(tokenRequest RateLimitedTokenRequest
 
 	blindKey, err := ecdsa.CreateKey(curve, blindKeyEnc)
 	if err != nil {
-		return nil
+		return err
 	}
 
 	b := cryptobyte.NewBuilder(nil)

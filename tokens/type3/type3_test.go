@@ -232,6 +232,54 @@ func TestRateLimitedIssuanceRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRateLimitedAttesterRejectsInvalidSignature(t *testing.T) {
+	issuer := NewRateLimitedIssuer(loadPrivateKey(t))
+	testOrigin := "origin.example"
+	if err := issuer.AddOrigin(testOrigin); err != nil {
+		t.Fatal(err)
+	}
+
+	curve := elliptic.P384()
+	clientSecretKey, err := ecdsa.GenerateKey(curve, rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestKey, err := ecdsa.GenerateKey(curve, rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := NewRateLimitedClientFromSecret(clientSecretKey.D.Bytes())
+	attester := NewRateLimitedAttester(NewMemoryClientStateCache())
+
+	challenge := make([]byte, 32)
+	util.MustRead(t, rand.Reader, challenge)
+
+	anonymousOriginID := make([]byte, 32)
+	util.MustRead(t, rand.Reader, anonymousOriginID)
+
+	nonce := make([]byte, 32)
+	util.MustRead(t, rand.Reader, nonce)
+
+	tokenKeyID := issuer.TokenKeyID()
+	tokenPublicKey := issuer.TokenKey()
+
+	requestState, err := client.CreateTokenRequest(challenge, nonce, requestKey.D.Bytes(), tokenKeyID, tokenPublicKey, testOrigin, issuer.NameKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	publicKeyEnc := elliptic.MarshalCompressed(curve, client.secretKey.PublicKey.X, client.secretKey.PublicKey.Y)
+
+	// Corrupt the client signature; VerifyRequest must reject the forged request.
+	forgedRequest := *requestState.Request()
+	forgedRequest.Signature = make([]byte, len(forgedRequest.Signature))
+
+	err = attester.VerifyRequest(forgedRequest, requestKey.D.Bytes(), publicKeyEnc, anonymousOriginID)
+	if err == nil {
+		t.Fatal("VerifyRequest accepted a request with an invalid signature (authentication bypass)")
+	}
+}
+
 func TestRateLimitedIssuerOriginRepeatFailure(t *testing.T) {
 	issuer := NewRateLimitedIssuer(loadPrivateKey(t))
 	testOriginA := "A.example"
